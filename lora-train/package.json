@@ -1,0 +1,28 @@
+{
+  "name": "lora-train",
+  "version": "0.1.0",
+  "description": "Image/style LoRA training engine (kohya sd-scripts SDXL). Spawns accelerate, prepares datasets, tracks runs. Framework-free; consumed by nhi-album-art-gen and orson.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "nanoid": "^5.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

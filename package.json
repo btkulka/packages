@@ -1,0 +1,13 @@
+{
+  "name": "datrapscallion-packages",
+  "private": true,
+  "description": "The home for Ben's shared packages. Each folder here is one package; apps link it with file:../packages/<folder>.",
+  "workspaces": [
+    "*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @btkulka/proc-kit && npm run build --workspaces --if-present",
+    "typecheck": "npm run build -w @btkulka/proc-kit && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @btkulka/proc-kit && npm test --workspaces --if-present"
+  }
+}

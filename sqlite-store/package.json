@@ -1,0 +1,44 @@
+{
+  "name": "@btkulka/sqlite-store",
+  "version": "0.1.0",
+  "description": "The SQLite layer Ben's apps share: open with pragmas (WAL, foreign keys, busy timeout, synchronous), data-dir creation, read-only and must-exist opens, a lazy singleton, transactions, user_version and run-once migrations, idempotent ALTERs and table rebuilds, JSON column parsing and a key/value table. Works on a better-sqlite3 Database or a node:sqlite DatabaseSync that the app hands in; never imports either.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "sqlite-store"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.0.0",
+    "better-sqlite3": "^12.11.1",
+    "typescript": "^5.6.0"
+  }
+}

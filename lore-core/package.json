@@ -1,0 +1,31 @@
+{
+  "name": "@datrapscallion/lore-core",
+  "version": "0.1.0",
+  "description": "Lightweight lore/embeddings retrieval core: a LanceDB-backed KnowledgeStore with obscurity-gated narrator + character lookups. Claude-mode (no embedding endpoint) and Ollama-mode both supported. No MCP, no SQLite, no LLM generation. Used by orson (starfall keeps its own fork).",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.27.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.4.5"
+  }
+}

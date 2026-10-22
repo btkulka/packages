@@ -1,0 +1,64 @@
+{
+  "name": "@btkulka/electron-kit",
+  "version": "0.1.0",
+  "description": "Electron app scaffolding Ben's apps each re-implemented: single-instance lock, window state, dev-server/file loading, safe external links, close-to-tray, tray, typed IPC (main + preload), frameless window controls, app lifecycle and crash logging. Electron objects are passed in; the package never requires electron.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "electron-kit"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./main": {
+      "types": "./dist/esm/main/index.d.ts",
+      "import": "./dist/esm/main/index.js",
+      "require": "./dist/cjs/main/index.js"
+    },
+    "./preload": {
+      "types": "./dist/esm/preload/index.d.ts",
+      "import": "./dist/esm/preload/index.js",
+      "require": "./dist/cjs/preload/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "main": [
+        "./dist/esm/main/index.d.ts"
+      ],
+      "preload": [
+        "./dist/esm/preload/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^41.10.7",
+    "typescript": "^5.6.0"
+  }
+}

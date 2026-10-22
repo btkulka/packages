@@ -1,0 +1,45 @@
+{
+  "name": "@datrapscallion/comfy-client",
+  "version": "0.2.0",
+  "description": "Backend ComfyUI adapter: HTTP + WebSocket client, SDXL/Illustrious and Qwen-edit workflow builders, job queue, and tracing. No UI, no Electron.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./postprocess": {
+      "types": "./dist/postprocess.d.ts",
+      "import": "./dist/postprocess.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "sharp": "^0.33.0"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "rimraf": "^6.0.0",
+    "sharp": "^0.33.0",
+    "typescript": "^5.6.0"
+  }
+}

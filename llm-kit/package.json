@@ -1,0 +1,50 @@
+{
+  "name": "@btkulka/llm-kit",
+  "version": "0.1.0",
+  "description": "The transport and parsing layer under Ben's LLM calls: running the claude CLI (Windows shim resolution, prompt over stdin, json/stream-json parsing, detached runs with a log), an OpenAI-compatible chat client (koboldcpp, llama.cpp, LM Studio, GBNF grammars), a native Ollama client (chat, streaming, embeddings, model list), and tolerant JSON extraction from model output. No runtime dependencies; model names, URLs and paths come from the app.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "llm-kit"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./json": {
+      "types": "./dist/esm/json.d.ts",
+      "import": "./dist/esm/json.js",
+      "require": "./dist/cjs/json.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/proc-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
