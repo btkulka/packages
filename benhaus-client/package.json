@@ -1,0 +1,42 @@
+{
+  "name": "@btkulka/benhaus-client",
+  "version": "0.1.0",
+  "description": "A client for Benhäus, Ben's desktop hub, from any local app: finds it through ~/.benhaus/mcp.json and calls its tools over the local endpoint. Shares Benhäus's Google sign-ins (Gmail search, threads, replies, labels; calendar events, free/busy included) without each app holding OAuth tokens, posts Benhäus notifications, and reads Settings › Credentials (API keys kept in Benhäus, with an environment fallback). No runtime dependencies.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "benhaus-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

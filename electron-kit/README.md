@@ -1,6 +1,6 @@
 # @btkulka/electron-kit
 
-The Electron scaffolding Ben's seven Electron apps each wrote for themselves: the single-instance lock, saved window positions, loading the dev server or the built page, opening links safely in the browser, close-to-tray and "ask before closing", the tray icon, typed IPC on both sides of the bridge, frameless title-bar controls, the ready/activate/all-closed boilerplate, and crash logging.
+The Electron scaffolding Ben's seven Electron apps each wrote for themselves: the single-instance lock, saved window positions, loading the dev server or the built page, opening links safely in the browser, close-to-tray and "ask before closing", the tray icon, typed IPC on both sides of the bridge, frameless title-bar controls, the ready/activate/all-closed boilerplate, crash logging, and a web host that serves the app as a web app (its page and IPC over HTTP, for a Benhäus tab or any browser).
 
 It never requires `electron`. Every function takes the Electron objects it needs (`app`, `BrowserWindow`, `screen`, `shell`, `ipcMain`, `ipcRenderer`, `{ Tray, Menu, nativeImage }`) as arguments. The parameter types are small structural interfaces, not Electron's own classes, so any Electron from 28 up fits. This was checked against the Electron 28, 30, 33, 39 and 41 typings the apps have installed. Tests use fakes.
 
@@ -134,7 +134,9 @@ import * as kit from "@btkulka/electron-kit/main";
 
   All are checked against `S`. Handling a channel twice throws, as in Electron. The event is typed `any`; annotate it as `IpcMainInvokeEvent` yourself if you use it.
 - **`sendTo(win, channel, payload?): boolean`** is a no-op (`false`) when the window or its page is gone. It replaces `mainWindow?.webContents.send(…)`, which throws "Object has been destroyed" after a close.
-- **`broadcast(BrowserWindow, channel, payload?): number`** sends to every live window and returns how many it reached.
+- **`broadcast(BrowserWindow, channel, payload?): number`** sends to every live window (and every page the web host serves) and returns how many windows it reached.
+- **`recordIpc(ipcMain): RecordingIpcMain`** wraps Electron's `ipcMain` so what's registered through it is also callable without a renderer, which is what the web host dispatches a page's calls to: `registry.invoke(channel, args)`, `registry.send(channel, args)`, `registry.has(channel)`, `registry.channels()`. `createIpcMain` records for you (`ipc.registry`); an app that calls `ipcMain.handle` directly wraps once (`const ipcMain = recordIpc(electron.ipcMain)`) and uses the wrapped one everywhere. Wrapping twice gives the same recorder. The event a web call carries is `WEB_EVENT` (`sender: null`, `web: true`), so a `handleWithEvent` handler that needs `event.sender` must cope with none.
+- `broadcast()` and `IpcMainKit.broadcast` also reach every page the web host serves (`addBroadcastSink` is how it listens). `sendTo` is one window, so it doesn't.
 
 **Frameless title bar**
 
@@ -173,6 +175,27 @@ import * as kit from "@btkulka/electron-kit/main";
 **Crashes**
 
 - **`logCrashes((kind, error) => …, { app? }): () => void`** reports uncaught exceptions and unhandled rejections in main instead of showing Electron's crash dialog. The app keeps running, as in candybar and Orson. With `app`, it also reports `render-process-gone` (`{ reason, exitCode, url }`; clean exits are skipped). A logger that throws can't loop. It returns a function that removes the listeners.
+
+**Web host: the app as a web app**
+
+- **`createWebHost({ port, rendererDir, preloadFile, ipc, host?, platform?, info?, fallback?, log? }): Promise<WebHost>`** serves the built renderer over HTTP on `127.0.0.1:<port>` and bridges its IPC to the browser, so the same app shows in a Benhäus tab (or any browser) with or without its own window. The page is the built `index.html`, unchanged but for one `<script src="/__kit/preload.js">` added first in `<head>`: the built **preload bundle itself**, wrapped so its `require("electron")` gets a stand-in whose `contextBridge.exposeInMainWorld` sets `window.<key>` and whose `ipcRenderer` goes over HTTP (`POST /__kit/invoke`, `POST /__kit/send`, with `sendSync` as a synchronous request) and a server-sent-events stream (`GET /__kit/events`) for what main pushes. `process`, `module`, `exports`, `__dirname` and `__filename` are supplied; a preload may require nothing but `electron` (bundle anything else in). The page reads `window.__kitWeb` (`{ web: true, platform, port, ...info }`) to tell it's on the web and hide what only a window has (frameless title-bar controls, `<webview>`s). The kit's own window channels are answered in the page (`window:is-maximized` is false; `window:control` reload reloads the page).
+  ```ts
+  const ipc = kit.createIpcMain<AppIpc>(ipcMain, BrowserWindow);
+  const host = await kit.createWebHost({ port: 7791, rendererDir: join(__dirname, "../renderer"), preloadFile: join(__dirname, "../preload/index.cjs"), ipc: ipc.registry, info: { app: "Orange Friction" } });
+  host.url;        // http://127.0.0.1:7791
+  host.clients();  // pages listening for events
+  host.push("tick", payload);   // what webContents.send would do, to every page; broadcast() does this for you
+  await host.close();
+  ```
+  `ipc` is where a page's calls go: `createIpcMain(…).registry`, or `recordIpc(ipcMain).registry` for an app that registers on `ipcMain` directly (see IPC above). Only the page it serves can call in: the IPC routes need a custom header, which a cross-site request can't send without a preflight that isn't answered, and an `Origin` other than the host's own is refused. Paths never leave `rendererDir`; a path with no extension that isn't a file gets `fallback` (`index.html`), for routers.
+- **`isWebLaunch(argv = process.argv, env = process.env): boolean`**: whether this launch asked for the web host alone, no window: `--web` on the command line or `ELECTRON_KIT_WEB=1` in the environment (what an app's `npm run web` sets: build, then `electron . --web`). In `second-instance`, pass that launch's argv with an empty env to read its flag rather than this process's. The pattern:
+  ```ts
+  const webLaunch = kit.isWebLaunch();
+  kit.requestSingleInstance(app, { onSecondInstance: (argv) => (win ? kit.revealWindow(win) : !kit.isWebLaunch(argv, {}) && createWindow()) });
+  kit.startApp(app, BrowserWindow, { ready: () => { if (!webLaunch) createWindow(); void serveWeb(); }, allClosed: webLaunch ? "stay" : "quit" });
+  ```
+  Serve in both modes, so a web tab can join a desktop app that's already running (Benhäus adopts whatever answers on the port). Two instances can't share a profile, so a `--web` launch into a running desktop app only reaches its `second-instance`, which is why the desktop app serves too.
+- Pure pieces, for tests: `injectWebPreload(html)`, `webPreloadScript(preloadSource, info)`, `fileUnder(root, urlPath)`.
 
 ## Replaces
 

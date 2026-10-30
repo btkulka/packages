@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>electron-kit</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9c9d1" stop-opacity="0.30"/><stop offset="1" stop-color="#82828c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7f7fa" stop-opacity="0.22"/><stop offset="1" stop-color="#c9c9d1" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="64" y1="56" x2="192" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7f7fa"/><stop offset="0.5" stop-color="#c9c9d1"/><stop offset="1" stop-color="#82828c"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="214" rx="64" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <g transform="translate(0 8)" fill="#3b3b43"><rect x="66" y="74" width="124" height="106" rx="16"/></g>
+    <g fill="url(#face)"><rect x="66" y="74" width="124" height="106" rx="16"/></g>
+    <rect x="66" y="74" width="124" height="26" rx="16" fill="#f7f7fa" fill-opacity="0.5"/><rect x="66" y="92" width="124" height="8" fill="#3b3b43" fill-opacity="0.35"/><g fill="#3b3b43"><circle cx="82" cy="87" r="4.5"/><circle cx="96" cy="87" r="4.5"/><circle cx="110" cy="87" r="4.5"/></g><g fill="#3b3b43" fill-opacity="0.45"><rect x="80" y="112" width="40" height="54" rx="6"/><rect x="130" y="112" width="46" height="12" rx="6"/><rect x="130" y="132" width="46" height="12" rx="6"/><rect x="130" y="152" width="30" height="12" rx="6"/></g>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

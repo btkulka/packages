@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>media-kit: ffmpeg and yt-dlp</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#cf9dff" stop-opacity="0.30"/><stop offset="1" stop-color="#8545d6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f1e2ff" stop-opacity="0.22"/><stop offset="1" stop-color="#cf9dff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="64" y1="56" x2="192" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f1e2ff"/><stop offset="0.5" stop-color="#cf9dff"/><stop offset="1" stop-color="#8545d6"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="214" rx="64" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <g transform="translate(0 8)" fill="#3f1c6e"><rect x="64" y="82" width="128" height="92" rx="14"/></g>
+    <g fill="url(#face)"><rect x="64" y="82" width="128" height="92" rx="14"/></g>
+    <g fill="#3f1c6e" fill-opacity="0.6"><rect x="76" y="88" width="10" height="9" rx="2"/><rect x="76" y="159" width="10" height="9" rx="2"/><rect x="95" y="88" width="10" height="9" rx="2"/><rect x="95" y="159" width="10" height="9" rx="2"/><rect x="114" y="88" width="10" height="9" rx="2"/><rect x="114" y="159" width="10" height="9" rx="2"/><rect x="133" y="88" width="10" height="9" rx="2"/><rect x="133" y="159" width="10" height="9" rx="2"/><rect x="152" y="88" width="10" height="9" rx="2"/><rect x="152" y="159" width="10" height="9" rx="2"/><rect x="171" y="88" width="10" height="9" rx="2"/><rect x="171" y="159" width="10" height="9" rx="2"/></g><path d="M116 108l32 20-32 20z" fill="#f1e2ff"/>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

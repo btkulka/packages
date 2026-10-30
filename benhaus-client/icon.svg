@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>benhaus-client: plugs an app into Benhäus</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e2bd68" stop-opacity="0.30"/><stop offset="1" stop-color="#8a6a22" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6e3ae" stop-opacity="0.22"/><stop offset="1" stop-color="#e2bd68" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="64" y1="56" x2="192" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6e3ae"/><stop offset="0.5" stop-color="#e2bd68"/><stop offset="1" stop-color="#8a6a22"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <g id="plug">
+      <rect x="102" y="58" width="16" height="54" rx="6"/>
+      <rect x="138" y="58" width="16" height="54" rx="6"/>
+      <rect x="84" y="104" width="88" height="68" rx="18"/>
+      <path d="M128 168v14c0 16 12 24 28 24h38" fill="none" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="218" rx="64" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <g transform="translate(0 8)" fill="#4a3510" stroke="#4a3510"><use href="#plug"/></g>
+    <g fill="url(#face)" stroke="url(#face)"><use href="#plug"/></g>
+    <path d="M84 128h88" stroke="#4a3510" stroke-opacity="0.55" stroke-width="5"/>
+    <path d="M100 116h28" stroke="#f6e3ae" stroke-opacity="0.7" stroke-width="5" stroke-linecap="round"/>
+    <rect x="106" y="64" width="5" height="34" rx="2.5" fill="#f6e3ae" fill-opacity="0.6"/>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

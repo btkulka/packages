@@ -9,14 +9,16 @@ The home for Ben's shared packages: code more than one app uses, kept in one pla
 | [`lore-core`](lore-core) (`@datrapscallion/lore-core`) | LanceDB knowledge store for game lore | orson |
 | [`mcp-kit`](mcp-kit) | MCP server plumbing: results, stdio and HTTP serving, parent watchdog, stdio↔HTTP bridge; one SDK and zod for every app | (migrating) |
 | [`sqlite-store`](sqlite-store) | SQLite open with pragmas, migrations, transactions, JSON and settings helpers, for better-sqlite3 or node:sqlite passed in by the app | (migrating) |
-| [`electron-kit`](electron-kit) | Electron main and preload scaffolding: typed IPC, single instance, window state, tray, window controls, safe external links | (migrating) |
+| [`electron-kit`](electron-kit) | Electron main and preload scaffolding: typed IPC, single instance, window state, tray, window controls, safe external links, and a web host that serves the app as a web app (its page and IPC over HTTP, for a Benhäus tab) | (migrating) |
 | [`proc-kit`](proc-kit) | Process and dev tooling: port owners, free a port, kill a tree, detached spawn, wait for port or HTTP, Electron env, PATH lookup | (migrating), media-kit, llm-kit |
 | [`llm-kit`](llm-kit) | LLM transport: `claude` CLI runs, OpenAI-compatible and Ollama chat, JSON from model output | (migrating) |
 | [`media-kit`](media-kit) | ffmpeg, ffprobe and yt-dlp: find, run with progress, probe, convert, loudness | (migrating) |
 | [`elevenlabs-client`](elevenlabs-client) | ElevenLabs TTS, sound generation and voices, with retries | (migrating) |
 | [`spotify-client`](spotify-client) | Spotify client-credentials API client; browser-safe | (migrating) |
 | [`soundcloud-client`](soundcloud-client) | SoundCloud API client, OAuth and public | (migrating) |
+| [`benhaus-client`](benhaus-client) | Call Benhäus from a local app: its Google sign-ins (Gmail search, threads, replies; calendar events, free/busy included) and notifications, found through `~/.benhaus/mcp.json` | honeycomber |
 | [`ableton-als`](ableton-als) | Read Ableton Live sets: header, file references, missing samples | (migrating) |
+| [`scaffold`](scaffold) | A new app of Ben's, planned, written and handed to Claude Code: the plan and its questions, the files per kind (Electron, web, service, CLI, MCP, bot, package), a placeholder icon, the brief; `btkulka-scaffold` from a terminal | benhaus (the New app screen) |
 
 ## Using a package from an app
 

@@ -16,8 +16,11 @@ export type { Loadable, RendererSource } from "./renderer.js";
 export { DEFAULT_EXTERNAL_PROTOCOLS, externalUrl, openExternal, routeNewWindowsToBrowser } from "./external.js";
 export type { ExternalOptions, ShellLike, WindowOpener } from "./external.js";
 
-export { broadcast, createIpcMain, sendTo } from "./ipc.js";
-export type { IpcMainKit, IpcMainLike } from "./ipc.js";
+export { addBroadcastSink, broadcast, createIpcMain, recordIpc, sendTo, WEB_EVENT } from "./ipc.js";
+export type { IpcMainKit, IpcMainLike, IpcRegistry, RecordingIpcMain } from "./ipc.js";
+
+export { createWebHost, fileUnder, injectWebPreload, isWebLaunch, webPreloadScript } from "./web-host.js";
+export type { WebHost, WebHostOptions } from "./web-host.js";
 
 export { forwardMaximized, registerWindowControls, windowAction } from "./window-controls.js";
 export type {
