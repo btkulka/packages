@@ -1,0 +1,40 @@
+# resend-client
+
+A shared, browser-safe Resend REST client for Ben's apps: emails, domains, contacts, segments and broadcasts, with the API key passed in.
+
+Started 2026-11-03 from Benhäus's New app screen; this file is the brief. BPM lists it on its own (every folder in `D:/source/packages` with a package.json is a package there).
+
+## Brief
+What Ben asked for:
+> A shared BPM package, @btkulka/resend-client at D:/source/packages/resend-client, vertical utilities. Resend's REST API for Ben's apps, built the way notion-client and elevenlabs-client are: the API key is passed in (apps get it from Benhäus Settings › Credentials, credential id "resend/nhi", field apiKey, env RESEND_API_KEY, via @btkulka/benhaus-client's loadCredential), built on @btkulka/http-kit (per-attempt timeouts, AbortSignal, Retry-After on 429, backoff on 5xx and network errors), a typed ResendError carrying Resend's statusCode and name (auth vs validation vs rate limit vs other), browser-safe (no node:* imports, no Buffer), no other runtime dependencies. Scripts build, typecheck, test, prepublishOnly; tests run against a fake fetch.
+> 
+> Calls, and only these: emails (send one, with optional Idempotency-Key; batch send up to 100; get by id); domains (create, list, get with its DNS records and status, verify); contacts, which are global now that Resend replaced Audiences with Segments (create with first_name/last_name/unsubscribed/segments, get by id or email, update, delete, list with cursor paging and an optional segment filter, and an upsert helper that creates or updates by email); segments (create, list, get, delete, add a contact to a segment, remove one); broadcasts (create as a draft with segment_id, from, reply_to, subject, html, text, name; get; list; update; send now or scheduled_at; delete). Helpers: the unsubscribe placeholder {{{RESEND_UNSUBSCRIBE_URL}}} as a constant, a contact merge-tag builder like {{{contact.first_name|there}}}, and a client-side throttle (default 2 requests a second, configurable) so bulk contact syncs stay under Resend's rate limit. Verify every endpoint path and body against resend.com/docs/api-reference before writing it; segment membership endpoints especially, since they changed in the Audiences-to-Segments move.
+> 
+> README in the house style: what it is, the calls, how an app gets the key from Benhäus Credentials. First consumer is nhi-dash (D:/source/nhi-dashboard), which will use it for an NHI fan mailing list sent as Resend broadcasts from nhi-dj.com, so unsubscribes are handled by Resend's hosted page (nhi-dash is local and can't host one). Nothing in the package sends without the app calling it explicitly.
+The vision:
+
+- Only the calls Ben's apps use: emails (send with optional Idempotency-Key, batch up to 100, get), domains, global contacts with an email upsert helper, segments with membership add/remove, and broadcasts (draft, update, send now or scheduled, delete)
+- Built on http-kit like notion-client and elevenlabs-client: per-attempt timeouts, AbortSignal, Retry-After on 429, backoff on 5xx and network errors
+- Typed ResendError carrying Resend's statusCode and name, with auth vs validation vs rate limit vs other
+- Helpers: the {{{RESEND_UNSUBSCRIBE_URL}}} constant, a contact merge-tag builder like {{{contact.first_name|there}}}, and a client-side throttle (default 2 requests a second, configurable) for bulk syncs
+- The key is passed in; the README shows how an app loads credential resend/nhi (field apiKey, env RESEND_API_KEY) through benhaus-client's loadCredential
+- Browser-safe, no node:* or Buffer, no other runtime dependencies; nothing sends unless the app calls it; tests run against a fake fetch
+
+## Build on the shared packages (BPM)
+Ben's shared code lives in `D:/source/packages` (BPM in Benhäus; `benhaus list_packages` and `search_code` over MCP). This package depends on:
+- `@btkulka/http-kit` — The fetch plumbing Ben's API clients share: FetchLike types and a default fetch, a typed HttpError, one request with a per-attempt timeout and AbortSignal that reads text first and parses JSON when it can, retries (429 waits Retry-After, 5xx and network errors back off, never an abort), an abortable sleep, UTF-8 safe base64, a Basic auth header and form encoding. Browser-safe: no node:* imports, no Buffer. No runtime dependencies.
+- `@btkulka/benhaus-client` — A client for Benhäus, Ben's desktop hub, from any local app: finds it through ~/.benhaus/mcp.json and calls its tools over the local endpoint. Shares Benhäus's Google sign-ins (Gmail search, threads, replies, labels; calendar events, free/busy included) without each app holding OAuth tokens, posts Benhäus notifications, and reads Settings › Credentials (API keys kept in Benhäus, with an environment fallback). No runtime dependencies.
+Rules:
+- Before writing anything that could be shared (processes and ports, SQLite, LLM calls, media, MCP plumbing, Electron scaffolding, API clients), look in BPM first and use the package. Link one that isn't here yet with `"@btkulka/<name>": "file:../<name>"` and `npm install`.
+- When something here turns out to be reusable, make it a package in `D:/source/packages` (the dual ESM+CJS layout the others have, an `icon.svg` in the Benhäus app-icon style designed with Claude Design) and depend on it here. Delete the copy it replaces in the same change.
+- Packages load from their `dist/`: run `npm run build` in `D:/source/packages` after changing one.
+## Icon
+`icon.svg` is an envelope sending a signal (one letter going out to many) on the Benhäus app-icon plate, in the utilities sky tint (`#dcebff` / `#7cb8ff` / `#2f6fc4`, cutouts `#163a6b`, the same ramp as the vertical's tile); BPM draws it through `benhaus.config.json` (`logos` and the `libraries` row). Designed on the Claude Design canvas https://claude.ai/artifact/WZJmM78icGR7SQvDYUuywA with the Benhäus design system, shown there at 256, 88, 32 and 20.
+## State
+Built 2026-11-02: `src/client.ts` (the client on http-kit: a throttle slot before every attempt, retries that skip the sending quotas and retry Resend's two retryable 409s), `src/errors.ts` (`ResendError`/`ResendAuthError`, `category`, `isResendError`), `src/call.ts` (paging, path segments, dates), one file per resource (`emails`, `domains`, `contacts` with `upsert`, `segments`, `broadcasts`), `src/throttle.ts`, `src/personalize.ts`, tests beside each against the fake fetch in `src/fake-fetch.test.ts` (58, all passing). README.md is the reference. Endpoints were checked against resend.com/docs/api-reference and Resend's Node SDK on 2026-11-02; the SDK settled field names the docs pages don't render and the segment filter (`GET /segments/{id}/contacts`). Decisions: `emails.send`/`batch` make an Idempotency-Key per call when the app gives none, so retries can't double-send; `broadcasts.send` retries only a 429; `broadcasts.create` sends only draft fields; `upsert` never changes an existing contact's `unsubscribed`; the throttle stays at 2 a second although Resend documents 10 per team. Next: nhi-dash links it (README, "First consumer"), with the `resend/nhi` credential in Benhäus.
+## First steps
+1. Scaffold D:/source/packages/resend-client as a BPM package copying notion-client's layout (build, typecheck, test, prepublishOnly), with http-kit as the only dependency and benhaus-client as a dev/doc reference only
+2. Read resend.com/docs/api-reference and record each endpoint path and body, segment membership endpoints first; then write the core client, ResendError and the fake-fetch test harness
+3. Add emails and domains, then contacts (with upsert), segments and broadcasts, each with tests against the fake fetch
+4. Add the unsubscribe constant, merge-tag builder and throttle, with tests that the throttle spaces calls and respects the configured rate
+5. Write the README (what it is, the calls, getting the key from Benhäus Credentials) and register the package in BPM, then hand off to nhi-dash

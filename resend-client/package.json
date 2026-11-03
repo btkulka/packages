@@ -1,0 +1,78 @@
+{
+  "name": "@btkulka/resend-client",
+  "version": "0.1.0",
+  "description": "Resend's API for Ben's apps: an API key in, then emails (send with an Idempotency-Key, batch up to 100, get), domains, global contacts with an upsert by email, segments and their members, and broadcasts (draft, update, send now or scheduled, delete). Built on http-kit (timeouts, Retry-After on 429, backoff on 5xx and network errors, typed ResendError with Resend's status, name and a category), with a client-side throttle (2 requests a second by default) and merge-tag helpers. Browser-safe: no node:* imports, no Buffer.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "resend-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "benhaus": {
+    "credential": {
+      "label": "Resend",
+      "docs": "https://resend.com/api-keys",
+      "fields": [
+        {
+          "name": "apiKey",
+          "label": "API key",
+          "secret": true,
+          "env": "RESEND_API_KEY",
+          "placeholder": "re_..."
+        }
+      ],
+      "test": {
+        "method": "GET",
+        "url": "https://api.resend.com/domains",
+        "headers": {
+          "Authorization": "Bearer {apiKey}"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "status": 401,
+            "match": "restricted_api_key",
+            "message": "A sending-only key. nhi-dash needs a Full access key for contacts, segments and broadcasts."
+          }
+        ]
+      }
+    }
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/http-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@btkulka/benhaus-client": "^0.1.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}

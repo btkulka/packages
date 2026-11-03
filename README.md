@@ -17,8 +17,9 @@ The home for Ben's shared packages: code more than one app uses, kept in one pla
 | [`spotify-client`](spotify-client) | Spotify client-credentials API client; browser-safe | (migrating) |
 | [`soundcloud-client`](soundcloud-client) | SoundCloud API client, OAuth and public | (migrating) |
 | [`benhaus-client`](benhaus-client) | Call Benhäus from a local app: its Google sign-ins (Gmail search, threads, replies; calendar events, free/busy included) and notifications, found through `~/.benhaus/mcp.json` | honeycomber |
-| [`http-kit`](http-kit) | The fetch plumbing under the API clients: timeouts, retries with Retry-After, a typed HttpError; browser-safe | notion-client |
+| [`http-kit`](http-kit) | The fetch plumbing under the API clients: timeouts, retries with Retry-After, a typed HttpError; browser-safe | notion-client, resend-client |
 | [`notion-client`](notion-client) | Notion API client: the integration's workspace, search, pages, databases and rows, blocks as text, page writes, ids from notion.so addresses; browser-safe | benhaus (Settings › Accounts › Notion, `search_notion`, `read_notion`) |
+| [`resend-client`](resend-client) | Resend API client: emails (Idempotency-Key, batches of 100), domains, global contacts with an upsert by email, segments and their members, broadcasts as drafts sent on call; merge tags, the unsubscribe link and a throttle; browser-safe | (nhi-dash, next) |
 | [`ableton-als`](ableton-als) | Read Ableton Live sets: header, file references, missing samples | (migrating) |
 | [`scaffold`](scaffold) | A new app of Ben's, planned, written and handed to Claude Code: the plan and its questions, the files per kind (Electron, web, service, CLI, MCP, bot, package), a placeholder icon, the brief; `btkulka-scaffold` from a terminal | benhaus (the New app screen) |
 
