@@ -10,6 +10,42 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
+  "benhaus": {
+    "credential": {
+      "label": "ElevenLabs",
+      "docs": "https://elevenlabs.io/app/settings/api-keys",
+      "fields": [
+        {
+          "name": "apiKey",
+          "label": "API key",
+          "secret": true,
+          "env": "ELEVENLABS_API_KEY",
+          "placeholder": "sk_..."
+        }
+      ],
+      "test": {
+        "method": "GET",
+        "url": "https://api.elevenlabs.io/v2/voices?page_size=1",
+        "headers": {
+          "xi-api-key": "{apiKey}"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "status": 401,
+            "match": "missing_permissions",
+            "message": "The key works but can't read voices: give it Voices access in ElevenLabs."
+          },
+          {
+            "status": 401,
+            "message": "ElevenLabs didn't accept the key."
+          }
+        ]
+      }
+    }
+  },
   "type": "module",
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",

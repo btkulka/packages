@@ -10,6 +10,46 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
+  "benhaus": {
+    "credential": {
+      "label": "Spotify",
+      "docs": "https://developer.spotify.com/dashboard",
+      "fields": [
+        {
+          "name": "clientId",
+          "label": "Client ID",
+          "secret": false,
+          "env": "SPOTIFY_CLIENT_ID"
+        },
+        {
+          "name": "clientSecret",
+          "label": "Client secret",
+          "secret": true,
+          "env": "SPOTIFY_CLIENT_SECRET"
+        }
+      ],
+      "test": {
+        "method": "POST",
+        "url": "https://accounts.spotify.com/api/token",
+        "basicAuth": [
+          "clientId",
+          "clientSecret"
+        ],
+        "form": {
+          "grant_type": "client_credentials"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "match": "invalid_client",
+            "message": "Spotify doesn't know this client ID and secret together: check both on the app's Settings page."
+          }
+        ]
+      }
+    }
+  },
   "type": "module",
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",

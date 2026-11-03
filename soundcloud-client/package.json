@@ -10,6 +10,49 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
+  "benhaus": {
+    "credential": {
+      "label": "SoundCloud",
+      "docs": "https://soundcloud.com/you/apps",
+      "fields": [
+        {
+          "name": "clientId",
+          "label": "Client ID",
+          "secret": false,
+          "env": "SOUNDCLOUD_CLIENT_ID"
+        },
+        {
+          "name": "clientSecret",
+          "label": "Client secret",
+          "secret": true,
+          "env": "SOUNDCLOUD_CLIENT_SECRET"
+        }
+      ],
+      "test": {
+        "method": "POST",
+        "url": "https://secure.soundcloud.com/oauth/token",
+        "headers": {
+          "Accept": "application/json; charset=utf-8"
+        },
+        "basicAuth": [
+          "clientId",
+          "clientSecret"
+        ],
+        "form": {
+          "grant_type": "client_credentials"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "match": "invalid_client",
+            "message": "SoundCloud doesn't know this client ID and secret together."
+          }
+        ]
+      }
+    }
+  },
   "type": "module",
   "main": "./dist/cjs/index.js",
   "types": "./dist/esm/index.d.ts",
