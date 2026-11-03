@@ -200,19 +200,35 @@ export interface CredentialEnvResult {
   missing: string[];
 }
 
+/** One read of a credential: an app asking (app), Benhäus starting a tool (env), or Ben copying a field (copy). */
+export interface CredentialRead {
+  app: string;
+  at: string;
+  via: "app" | "env" | "copy";
+}
+
 /** A credential as list_credentials shows it: secret fields carry no value. */
 export interface CredentialSummary {
   id: string;
   label?: string;
   service: string;
+  /** The BPM package whose manifest describes it (resend-client). */
+  adapter?: string;
   note?: string;
   owner?: string;
-  fields: { name: string; secret: boolean; env?: string; value?: string }[];
+  /** set: it has a value (a secret's never shows). */
+  fields: { name: string; label?: string; secret: boolean; env?: string; set: boolean; value?: string }[];
+  /** Tool ids it's injected into; "*" for every tool. */
   inject: string[];
   createdAt: string;
   updatedAt: string;
-  usedBy: { app: string; at: string; via: "app" | "env" }[];
+  /** The latest read per app, newest first. */
+  usedBy: CredentialRead[];
+  /** Every read, newest first, the last 50. */
+  readLog: CredentialRead[];
   references: { tool: string; env: string; field: string; ok: boolean }[];
+  /** The last Test: never the response. */
+  test?: { ok: boolean; status?: number; elapsedMs: number; at: string; error?: string; hint?: string };
 }
 
 export interface CredentialsList {
@@ -223,15 +239,19 @@ export interface CredentialsList {
   file?: string;
 }
 
+/** set_credential: never a secret value (it refuses one), so keys only go in through Settings › Credentials. */
 export interface SetCredentialInput {
   id: string;
   label?: string;
+  /** A BPM package id with a credential manifest; "" clears it. It brings its fields, with no values. */
+  adapter?: string;
   service?: string;
   note?: string;
   owner?: string;
-  /** null removes a field. */
+  /** Values for fields that aren't secret; "" declares a field with no value, null removes one. */
   fields?: Record<string, string | null>;
   secret?: Record<string, boolean>;
   env?: Record<string, string | null>;
+  labels?: Record<string, string | null>;
   inject?: string[];
 }

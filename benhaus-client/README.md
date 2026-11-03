@@ -54,7 +54,7 @@ The client:
 - `call(name, args?)`: any other Benhäus tool, its JSON text parsed (text that isn't JSON comes back as a string). `callTool(name, args?)` is the raw form: `{ text, isError, content }`, and a tool's own error doesn't throw.
 - `credentials.get(id, { app? })`: one credential's values, `{ id, fields, updatedAt }`, or `undefined` when Benhäus doesn't have it. `app` (your tool id) shows on its "Read by" line in Benhäus.
 - `credentials.env({ app })`: `{ env, missing }`, the variables Benhäus injects into that tool when it starts it.
-- `credentials.list()`, `credentials.set(input)`: list_credentials and set_credential. Neither returns a secret field's value.
+- `credentials.list()`, `credentials.set(input)`: list_credentials and set_credential. Neither returns a secret field's value, and `set` refuses one: it creates a credential, names its adapter, env names and tools, and sets fields that aren't secret; Ben pastes keys in Settings › Credentials.
 - `discovery()`: the address and token in use.
 
 Argument names are camelCase here and mapped to Benhäus's snake_case; unset fields aren't sent. Results keep Benhäus's own field names (`thread_id`, `message_id`).
@@ -103,7 +103,8 @@ Everything throws `BenhausError` with a `kind`:
 - Benhäus's endpoint takes local, non-browser callers only (no `Origin` header, a loopback `Host`), so this works from Node servers and scripts, not from a web page. A page goes through its own server.
 - The shapes in `types.ts` follow Benhäus's `src/main/google.ts` and `mcp/tools.ts`. When a tool's output changes there, change it here.
 - Which Google account an app reads is the app's setting; Benhäus may have several signed in.
-- `credentials.*` needs a Benhäus with Settings › Credentials (Oct 29 2026 or later). An older one answers 404, which the helpers treat as closed.
+- `credentials.get` and `credentials.env` need Benhäus 0.1.0 built Oct 29 2026 or later (the `/credentials` routes); the Settings › Credentials screen, adapters, Test and the Read by log came with the build of Nov 2 2026. An older Benhäus answers 404, which the helpers treat as closed.
+- Every read is logged with its `app` for the credential's Read by line (the last 50); a read with no `app` shows as an unnamed app.
 
 ## Used by
 

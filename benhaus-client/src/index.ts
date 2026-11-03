@@ -11,6 +11,7 @@ export type {
   CalendarEventsInput,
   CalendarEventsResult,
   CredentialEnvResult,
+  CredentialRead,
   CredentialSummary,
   CredentialsList,
   CredentialValues,
