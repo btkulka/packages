@@ -1,0 +1,101 @@
+{
+  "name": "@btkulka/gemini-client",
+  "version": "0.1.0",
+  "description": "The Gemini API (Google AI Studio) for Ben's apps: an API key in, then models.list and Veo video generation (start the long-running predict, get the operation, wait for it with backoff and an AbortSignal, download the finished MP4 as bytes), with a per-second price table and a cost estimate. Built on http-kit (timeouts, Retry-After on 429, backoff on 5xx and network errors, typed GeminiError with Google's status, reason and a category). Browser-safe: no node:* imports, no Buffer. A Node-only CLI, gemini-video, renders a prompt or a JSON file of jobs to <name>.mp4 files, the key from Benhäus Credentials.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "gemini-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "benhaus": {
+    "credential": {
+      "label": "Gemini (Google AI Studio)",
+      "docs": "https://aistudio.google.com/apikey",
+      "fields": [
+        {
+          "name": "apiKey",
+          "label": "API key",
+          "secret": true,
+          "env": "GEMINI_API_KEY",
+          "placeholder": "AIza..."
+        }
+      ],
+      "test": {
+        "method": "GET",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+        "headers": {
+          "x-goog-api-key": "{apiKey}"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "status": 400,
+            "match": "API_KEY_INVALID",
+            "message": "Google doesn't know this key. Copy it again from aistudio.google.com/apikey (it starts with AIza)."
+          },
+          {
+            "status": 403,
+            "match": "SERVICE_DISABLED",
+            "message": "The key's Google Cloud project doesn't have the Generative Language API turned on. Enable it for that project (the link is in the error), or make a key in AI Studio, which turns it on for you."
+          },
+          {
+            "status": 403,
+            "match": "API_KEY_SERVICE_BLOCKED",
+            "message": "The key is restricted to other APIs. In Google Cloud › Credentials, allow the Generative Language API on it, or make a fresh key in AI Studio."
+          },
+          {
+            "status": 403,
+            "match": "API_KEY_HTTP_REFERRER_BLOCKED",
+            "message": "The key is restricted to websites. Make an unrestricted key (or one restricted by API) for Benhäus and the CLI."
+          },
+          {
+            "status": 400,
+            "match": "FAILED_PRECONDITION",
+            "message": "Google won't serve this key from here: either the Gemini API isn't offered in your country at all, or only its paid tier is (then set up billing for the key's project in AI Studio)."
+          }
+        ]
+      }
+    }
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "bin": {
+    "gemini-video": "./dist/esm/cli/gemini-video.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/benhaus-client": "^0.1.0",
+    "@btkulka/http-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}
