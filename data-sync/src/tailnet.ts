@@ -14,6 +14,13 @@ export interface Peer {
 export interface Tailnet {
   self: Peer | null;
   peers: Peer[];
+  /** Tailscale's backend state: "Running", "NeedsLogin", "Stopped", "Starting", "NoState"; absent when the CLI didn't answer. */
+  state?: string;
+  /** The tailnet's name, and the account this machine is signed in as. */
+  name?: string;
+  user?: string;
+  /** Where to sign in, while it needs a login. */
+  authUrl?: string;
 }
 
 /** The Tailscale CLI: TAILSCALE_CLI, the Mac app's own binary when it isn't on PATH, else `tailscale`. */
@@ -40,19 +47,31 @@ const toPeer = (n: RawNode, online: boolean): Peer | null => {
 
 /** Parse `tailscale status --json`. */
 export function parseTailscaleStatus(json: string): Tailnet {
-  const s = JSON.parse(json) as { Self?: RawNode; Peer?: Record<string, RawNode> };
+  const s = JSON.parse(json) as {
+    Self?: RawNode & { UserID?: number };
+    Peer?: Record<string, RawNode>;
+    BackendState?: string;
+    AuthURL?: string;
+    CurrentTailnet?: { Name?: string } | null;
+    User?: Record<string, { LoginName?: string }>;
+  };
   const self = s.Self ? toPeer(s.Self, true) : null;
   const peers = Object.values(s.Peer ?? {})
     .map((p) => toPeer(p, Boolean(p.Online)))
     .filter((p): p is Peer => p !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
-  return { self, peers };
+  const user = s.Self?.UserID !== undefined ? s.User?.[String(s.Self.UserID)]?.LoginName : undefined;
+  return { self, peers, state: s.BackendState, name: s.CurrentTailnet?.Name || undefined, user, authUrl: s.AuthURL || undefined };
 }
 
-/** This machine and its peers, from the Tailscale CLI. No Tailscale, or it's off: no peers (and the app serves on its own). */
-export function tailnet(options: { cli?: string; timeoutMs?: number } = {}): Promise<Tailnet> {
+/**
+ * This machine and its peers, from the Tailscale CLI. No Tailscale, or it's off: no peers (and the app serves on
+ * its own). `socket` asks a Benhäus-run userspace tailscaled (another tailnet) instead of the system one.
+ */
+export function tailnet(options: { cli?: string; socket?: string; timeoutMs?: number } = {}): Promise<Tailnet> {
+  const args = [...(options.socket ? ["--socket", options.socket] : []), "status", "--json"];
   return new Promise((resolve) => {
-    execFile(options.cli ?? tailscaleCli(), ["status", "--json"], { timeout: options.timeoutMs ?? 4000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+    execFile(options.cli ?? tailscaleCli(), args, { timeout: options.timeoutMs ?? 4000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
       if (err && !stdout) return resolve({ self: null, peers: [] });
       try {
         resolve(parseTailscaleStatus(String(stdout)));

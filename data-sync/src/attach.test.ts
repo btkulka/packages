@@ -107,7 +107,10 @@ describe("serveOrAttach", () => {
 test("parseTailscaleStatus: this machine and its peers, IPv4 first", () => {
   const net = parseTailscaleStatus(
     JSON.stringify({
-      Self: { HostName: "Zagreus", TailscaleIPs: ["100.102.17.49", "fd7a::1"], OS: "windows", Online: true },
+      BackendState: "Running",
+      CurrentTailnet: { Name: "stallionrapscallion@gmail.com" },
+      User: { "7": { LoginName: "stallionrapscallion@gmail.com" } },
+      Self: { HostName: "Zagreus", TailscaleIPs: ["100.102.17.49", "fd7a::1"], OS: "windows", Online: true, UserID: 7 },
       Peer: {
         k1: { HostName: "iphone172", TailscaleIPs: ["100.92.58.81"], OS: "iOS", Online: false },
         k2: { HostName: "bens-macbook", DNSName: "bens-macbook.tail.ts.net.", TailscaleIPs: ["fd7a::2", "100.70.1.2"], OS: "macOS", Online: true },
@@ -115,6 +118,10 @@ test("parseTailscaleStatus: this machine and its peers, IPv4 first", () => {
     }),
   );
   assert.deepEqual(net.self, { name: "zagreus", ip: "100.102.17.49", os: "windows", online: true });
+  assert.equal(net.state, "Running");
+  assert.equal(net.name, "stallionrapscallion@gmail.com");
+  assert.equal(net.user, "stallionrapscallion@gmail.com");
+  assert.equal(net.authUrl, undefined);
   assert.deepEqual(
     net.peers.map((p) => [p.name, p.ip, p.online]),
     [

@@ -1,7 +1,8 @@
-import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { connect } from "node:net";
+import { createServer, request, type IncomingMessage, type RequestOptions, type Server, type ServerResponse } from "node:http";
+import { connect, type Socket } from "node:net";
 import { hostname } from "node:os";
 import { runsServers, tailnet, type Peer } from "./tailnet.js";
+import { tailnetFor, type TailnetConfig } from "./tailnets.js";
 
 /** Every app that uses this answers here, so another machine can tell it's the same app and whether it's serving. */
 export const HELLO_PATH = "/_data-sync/hello";
@@ -24,6 +25,8 @@ export interface Running {
   /** The machine's tailnet name, or "localhost". */
   name: string;
   hello: Hello;
+  /** The HTTP proxy that reaches it (a userspace tailnet's); absent when it's reachable directly. */
+  proxy?: string;
 }
 
 /** GET HELLO_PATH answered with `hello()`; anything else is left for the app. Returns true when it answered. */
@@ -42,37 +45,70 @@ export function servingHello(app: string, machine = hostname()): () => Hello {
   return () => ({ app, machine, mode: "serving", pid: process.pid, startedAt });
 }
 
-async function probe(host: string, port: number, app: string, timeoutMs: number): Promise<Hello | null> {
-  try {
-    const res = await fetch(`http://${host.includes(":") ? `[${host}]` : host}:${port}${HELLO_PATH}`, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    const h = (await res.json()) as Hello;
-    return h?.app === app && h.mode === "serving" ? h : null;
-  } catch {
-    return null;
-  }
+const hostPort = (host: string, port: number) => `${host.includes(":") ? `[${host}]` : host}:${port}`;
+
+/**
+ * Where to send a request for `host:port` + `path`: straight there, or to an HTTP proxy in absolute form (how a
+ * userspace tailscaled's outbound proxy reaches its tailnet).
+ */
+function route(host: string, port: number, path: string, proxy?: string): RequestOptions {
+  if (!proxy) return { host, port, path };
+  const p = new URL(proxy);
+  return { host: p.hostname, port: Number(p.port) || 80, path: `http://${hostPort(host, port)}${path}` };
+}
+
+/** GET a JSON body, or null on any failure or a non-200 within `timeoutMs`. */
+function getJson(host: string, port: number, path: string, timeoutMs: number, proxy?: string): Promise<unknown> {
+  return new Promise((resolve) => {
+    const req = request({ ...route(host, port, path, proxy), headers: { host: hostPort(host, port) } }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return resolve(null);
+      }
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (c: string) => (body += c));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.setTimeout(timeoutMs, () => req.destroy());
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
+async function probe(host: string, port: number, app: string, timeoutMs: number, proxy?: string): Promise<Hello | null> {
+  const h = (await getJson(host, port, HELLO_PATH, timeoutMs, proxy)) as Hello | null;
+  return h?.app === app && h.mode === "serving" ? h : null;
 }
 
 /**
  * The app serving its data right now, if any: this machine first (127.0.0.1), then every online machine
- * on the tailnet that runs servers. Attached instances don't count, so two attached machines can't point
- * at each other. Null when nothing answers within `timeoutMs`.
+ * on the app's tailnet (tailnetFor(app), or `tailnet`) that runs servers, through that tailnet's proxy when it
+ * has one. Attached instances don't count, so two attached machines can't point at each other. Null when
+ * nothing answers within `timeoutMs`.
  */
-export async function findRunning(options: { app: string; port: number; local?: boolean; peers?: Peer[]; timeoutMs?: number }): Promise<Running | null> {
+export async function findRunning(options: { app: string; port: number; local?: boolean; peers?: Peer[]; tailnet?: TailnetConfig; timeoutMs?: number }): Promise<Running | null> {
   const { app, port, timeoutMs = 1500 } = options;
   if (options.local !== false) {
     const h = await probe("127.0.0.1", port, app, timeoutMs);
     if (h) return { url: `http://127.0.0.1:${port}`, host: "127.0.0.1", name: "localhost", hello: h };
   }
+  const net = options.tailnet ?? tailnetFor(app);
   let peers = options.peers;
   if (!peers) {
-    const net = await tailnet();
-    peers = net.peers.filter((p) => p.ip !== net.self?.ip);
+    const status = await tailnet({ socket: net.socket });
+    peers = status.peers.filter((p) => p.ip !== status.self?.ip);
   }
   const candidates = peers.filter((p) => p.online && runsServers(p));
-  const found = await Promise.all(candidates.map(async (p) => ({ p, h: await probe(p.ip, port, app, timeoutMs) })));
+  const found = await Promise.all(candidates.map(async (p) => ({ p, h: await probe(p.ip, port, app, timeoutMs, net.proxy) })));
   const hit = found.find((f) => f.h);
-  return hit ? { url: `http://${hit.p.ip}:${port}`, host: hit.p.ip, name: hit.p.name, hello: hit.h! } : null;
+  return hit ? { url: `http://${hostPort(hit.p.ip, port)}`, host: hit.p.ip, name: hit.p.name, hello: hit.h!, proxy: net.proxy } : null;
 }
 
 export interface Proxy {
@@ -81,10 +117,36 @@ export interface Proxy {
   close(): Promise<void>;
 }
 
+/** A TCP connection to `host:port`, through an HTTP proxy's CONNECT when there is one. */
+function tunnel(host: string, port: number, proxy: string | undefined, ready: (s: Socket) => void, failed: () => void): Socket {
+  if (!proxy) {
+    const direct: Socket = connect(port, host, () => ready(direct));
+    return direct;
+  }
+  const p = new URL(proxy);
+  const s = connect(Number(p.port) || 80, p.hostname, () => s.write(`CONNECT ${hostPort(host, port)} HTTP/1.1\r\nHost: ${hostPort(host, port)}\r\n\r\n`));
+  let head = "";
+  const onData = (chunk: Buffer) => {
+    head += chunk.toString("latin1");
+    const end = head.indexOf("\r\n\r\n");
+    if (end < 0) return;
+    s.off("data", onData);
+    if (!/^HTTP\/1\.[01] 200/.test(head)) {
+      s.destroy();
+      return failed();
+    }
+    const rest = Buffer.from(head.slice(end + 4), "latin1");
+    if (rest.length) s.unshift(rest);
+    ready(s);
+  };
+  s.on("data", onData);
+  return s;
+}
+
 /**
- * Listen on `port` and pass every request (and WebSocket upgrade) through to `target`, answering
- * HELLO_PATH itself as attached. The Benhäus tab, the phone and anything else pointed at this machine's
- * port keep working, with the other machine's data.
+ * Listen on `port` and pass every request (and WebSocket upgrade) through to `target` (through its tailnet's
+ * proxy when it has one), answering HELLO_PATH itself as attached. The Benhäus tab, the phone and anything else
+ * pointed at this machine's port keep working, with the other machine's data.
  */
 export function startProxy(options: { app: string; port: number; host?: string; target: Running; machine?: string }): Promise<Proxy> {
   const { app, port, target } = options;
@@ -95,7 +157,7 @@ export function startProxy(options: { app: string; port: number; host?: string; 
 
   const server = createServer((req, res) => {
     if (hello(req, res)) return;
-    const up = request({ host: target.host, port: upstreamPort, method: req.method, path: req.url, headers: req.headers }, (r) => {
+    const up = request({ ...route(target.host, upstreamPort, req.url ?? "/", target.proxy), method: req.method, headers: req.headers }, (r) => {
       res.writeHead(r.statusCode ?? 502, r.headers);
       r.pipe(res);
     });
@@ -107,13 +169,19 @@ export function startProxy(options: { app: string; port: number; host?: string; 
   });
 
   server.on("upgrade", (req, socket, head) => {
-    const up = connect(upstreamPort, target.host, () => {
-      const lines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`];
-      for (let i = 0; i < req.rawHeaders.length; i += 2) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
-      up.write(`${lines.join("\r\n")}\r\n\r\n`);
-      if (head?.length) up.write(head);
-      socket.pipe(up).pipe(socket);
-    });
+    const up = tunnel(
+      target.host,
+      upstreamPort,
+      target.proxy,
+      (s) => {
+        const lines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`];
+        for (let i = 0; i < req.rawHeaders.length; i += 2) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+        s.write(`${lines.join("\r\n")}\r\n\r\n`);
+        if (head?.length) s.write(head);
+        socket.pipe(s).pipe(socket);
+      },
+      () => socket.destroy(),
+    );
     up.on("error", () => socket.destroy());
     socket.on("error", () => up.destroy());
   });
@@ -150,6 +218,8 @@ export interface ServeOrAttachOptions {
   log?: (line: string) => void;
   /** Peers to look at instead of asking Tailscale (tests). */
   peers?: Peer[];
+  /** The tailnet to look on. Default tailnetFor(app). */
+  tailnet?: TailnetConfig;
 }
 
 export type ServeOrAttach =
@@ -159,13 +229,13 @@ export type ServeOrAttach =
   | { mode: "attached"; running: Running; /** Stop proxying without taking over. */ stop: () => Promise<void> };
 
 /**
- * Look before serving: if this app is already serving on another machine of the tailnet, proxy this
+ * Look before serving: if this app is already serving on another machine of its tailnet, proxy this
  * machine's port to it, and take over (serve) when it goes away; otherwise serve now.
  */
 export async function serveOrAttach(options: ServeOrAttachOptions): Promise<ServeOrAttach> {
   const { app, port } = options;
   const log = options.log ?? ((line: string) => console.log(`[data-sync] ${line}`));
-  const running = await findRunning({ app, port, peers: options.peers });
+  const running = await findRunning({ app, port, peers: options.peers, tailnet: options.tailnet });
   if (!running) {
     await options.serve();
     return { mode: "serving" };
@@ -177,7 +247,7 @@ export async function serveOrAttach(options: ServeOrAttachOptions): Promise<Serv
   let misses = 0;
   let stopped = false;
   const timer = setInterval(async () => {
-    const h = await probe(running.host, port, app, 2000);
+    const h = await probe(running.host, port, app, 2000, running.proxy);
     if (h) {
       misses = 0;
       return;

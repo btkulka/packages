@@ -23,6 +23,7 @@ export {
   type PushAction,
   type SyncStatus,
 } from "./sync.js";
+export { defaultSyncDir, listTailnets, tailnetFor, tailnetsFile, type TailnetConfig } from "./tailnets.js";
 export { mirrorFolder, type MirrorOptions, type MirrorResult } from "./mirror.js";
 export { parseTailscaleStatus, runsServers, tailnet, tailscaleCli, type Peer, type Tailnet } from "./tailnet.js";
 export {

@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync, utimesSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import { syncDir } from "./sync.js";
+import { tailnetFor } from "./tailnets.js";
 
 export interface MirrorOptions {
   /** The app's own folder of files: resumes, artwork. */
@@ -9,7 +9,7 @@ export interface MirrorOptions {
   app: string;
   /** This folder's name under the app's: "resumes", "media". */
   name: string;
-  /** The sync folder. Default syncDir(). */
+  /** The sync folder. Default: the app's tailnet's. */
   dir?: string;
 }
 
@@ -63,7 +63,7 @@ function copy(from: string, to: string, mtimeMs: number) {
  * before serving and after the app adds or changes a file.
  */
 export function mirrorFolder(options: MirrorOptions): MirrorResult {
-  const remote = join(options.dir ?? syncDir(), options.app, options.name);
+  const remote = join(options.dir ?? tailnetFor(options.app).syncDir, options.app, options.name);
   const here = files(options.local);
   const there = existsSync(remote) ? files(remote) : new Map<string, number>();
   const result: MirrorResult = { copiedIn: [], copiedOut: [] };

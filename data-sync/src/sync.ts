@@ -1,16 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { openDatabase, type SqliteDriver, type SqliteHandle } from "@btkulka/sqlite-store";
 import { dumpDatabase, type Dump } from "./dump.js";
 import { backupDatabase, conflictCopies, peekManifest, readSnapshot, restoreSnapshot, snapshotName, writeSnapshot, type Manifest } from "./snapshot.js";
+import { defaultSyncDir, tailnetFor } from "./tailnets.js";
 import { decideVerdict, type Agreement, type Verdict } from "./verdict.js";
 
 /**
- * The folder Syncthing keeps the same on every machine: BENHAUS_SYNC_DIR, else ~/.benhaus-sync. Each app
- * keeps its snapshot in a folder of its own there.
+ * The default Syncthing folder: BENHAUS_SYNC_DIR, else ~/.benhaus-sync. An app on another tailnet uses that
+ * tailnet's folder instead (tailnets.ts); each app keeps its snapshot in a folder of its own there.
  */
-export const syncDir = (): string => process.env.BENHAUS_SYNC_DIR || join(homedir(), ".benhaus-sync");
+export const syncDir = defaultSyncDir;
 
 export interface DataSyncOptions<D extends SqliteHandle> {
   /** The app's id, and its folder in the sync folder: "habit-tracker". */
@@ -18,7 +19,7 @@ export interface DataSyncOptions<D extends SqliteHandle> {
   dbPath: string;
   /** The driver the app opens its database with: better-sqlite3's Database or node:sqlite's DatabaseSync. */
   driver: SqliteDriver<D>;
-  /** The sync folder. Default syncDir(). */
+  /** The sync folder. Default: the app's tailnet's (tailnetFor(app).syncDir). */
   dir?: string;
   /** This machine's name in manifests and messages. Default the host name. */
   machine?: string;
@@ -114,7 +115,7 @@ const empty = (): State => ({ agreed: { local: null, remote: null }, at: null, c
 export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<D>): DataSync<D> {
   const { app, dbPath, driver } = options;
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(app)) throw new Error(`data-sync: "${app}" isn't an app id (lowercase letters, digits, . _ -).`);
-  const file = join(options.dir ?? syncDir(), app, snapshotName);
+  const file = join(options.dir ?? tailnetFor(app).syncDir, app, snapshotName);
   const machine = options.machine ?? hostname();
   const stateFile = options.stateFile ?? `${dbPath}.sync.json`;
   const backupDir = options.backupDir ?? join(dirname(dbPath), "backups");
