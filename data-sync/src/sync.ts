@@ -5,6 +5,7 @@ import { openDatabase, type SqliteDriver, type SqliteHandle } from "@btkulka/sql
 import { dumpDatabase, type Dump } from "./dump.js";
 import { backupDatabase, conflictCopies, peekManifest, readSnapshot, restoreSnapshot, snapshotName, writeSnapshot, type Manifest } from "./snapshot.js";
 import { defaultSyncDir, tailnetFor } from "./tailnets.js";
+import { recordHistory, type HistoryEntry, type HistoryEvent } from "./history.js";
 import { decideVerdict, type Agreement, type Verdict } from "./verdict.js";
 
 /**
@@ -115,7 +116,8 @@ const empty = (): State => ({ agreed: { local: null, remote: null }, at: null, c
 export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<D>): DataSync<D> {
   const { app, dbPath, driver } = options;
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(app)) throw new Error(`data-sync: "${app}" isn't an app id (lowercase letters, digits, . _ -).`);
-  const file = join(options.dir ?? tailnetFor(app).syncDir, app, snapshotName);
+  const root = options.dir ?? tailnetFor(app).syncDir;
+  const file = join(root, app, snapshotName);
   const machine = options.machine ?? hostname();
   const stateFile = options.stateFile ?? `${dbPath}.sync.json`;
   const backupDir = options.backupDir ?? join(dirname(dbPath), "backups");
@@ -167,10 +169,14 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
     return next;
   };
 
-  const publish = (state: State, d: Dump): State => {
+  const history = (event: HistoryEvent, extra: Partial<HistoryEntry> = {}) => recordHistory(root, { at: new Date().toISOString(), app, machine, event, ...extra });
+  const facts = (d: { sha: string; total: number; rows: Record<string, number>; schemaVersion: number }) => ({ sha: d.sha, total: d.total, rows: d.rows, schemaVersion: d.schemaVersion });
+
+  const publish = (state: State, d: Dump, event: "pushed" | "kept-local" = "pushed"): State => {
     const m = writeSnapshot(file, app, machine, d);
     for (const c of conflictCopies(file)) rmSync(c, { force: true });
     log(`${app}: pushed ${d.total} rows (${d.sha.slice(0, 8)}) from ${machine}`);
+    history(event, facts(d));
     return agree(state, d.sha, m.sha);
   };
 
@@ -178,6 +184,7 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
     const next: State = { ...state, conflict: { since: new Date().toISOString(), reason, remote, backup } };
     writeState(next);
     log(`${app}: held. ${reason}`);
+    history("held", { from: remote?.machine, note: reason, sha: remote?.sha, total: remote?.total });
     return next;
   };
 
@@ -206,6 +213,7 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
       const { backup } = restoreSnapshot(driver, snap.sql, dbPath, { backupDir, keep: exclude });
       state = agree(state, dumpLocal()?.sha ?? null, snap.manifest.sha);
       log(`${app}: took ${snap.manifest.machine}'s data (${snap.manifest.total} rows); this machine's copy is in ${backup ?? "(none)"}`);
+      history("took-remote", { ...facts(snap.manifest), from: snap.manifest.machine });
       return { action: "pulled", status: build(state, dumpLocal(), snap.manifest), backup };
     }
 
@@ -221,12 +229,14 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
         const remote = snap!.manifest;
         if (options.schemaVersion !== undefined && remote.schemaVersion > options.schemaVersion) {
           log(`${app}: ${remote.machine}'s data is from newer code (schema ${remote.schemaVersion}, this app knows ${options.schemaVersion}). Update the app here; serving this machine's copy for now.`);
+          history("behind", { ...facts(remote), from: remote.machine });
           return { action: "behind", status: s };
         }
         const { backup } = restoreSnapshot(driver, snap!.sql, dbPath, { backupDir, keep: exclude });
         const restored = dumpLocal();
         state = agree(state, restored?.sha ?? null, remote.sha);
         log(`${app}: pulled ${remote.total} rows from ${remote.machine} (${remote.createdAt})`);
+        history("pulled", { ...facts(remote), from: remote.machine });
         return { action: "pulled", status: build(state, restored, remote), backup };
       }
       case "local-ahead":
@@ -247,13 +257,17 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
   };
 
   const push: DataSync<D>["push"] = (db, { force = false } = {}) => {
+    return pushAs(db, force, force ? "kept-local" : "pushed");
+  };
+
+  const pushAs = (db: D, force: boolean, event: "pushed" | "kept-local"): { action: PushAction; status: SyncStatus } => {
     let state = readState();
     const local = dumpDatabase(db, { exclude });
     const snap = readSnapshot(file);
     const s = build(state, local, snap?.manifest ?? null);
 
     if (force) {
-      state = publish(state, local);
+      state = publish(state, local, event);
       return { action: "pushed", status: build(state, local, readSnapshot(file)?.manifest ?? null) };
     }
     if (state.conflict) return { action: "held", status: s };

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { openDatabase, type SqliteDriver, type SqliteHandle } from "@btkulka/sqlite-store";
-import { createDataSync, type SyncStatus } from "./index.js";
+import { createDataSync, readHistory, type SyncStatus } from "./index.js";
 import { drivers, sandbox, SCHEMA, type Sandbox } from "./testing/drivers.js";
 
 const quiet = () => {};
@@ -94,6 +94,32 @@ for (const { name, driver } of drivers) {
       assert.deepEqual(names(dbA), ["Read", "Mac"]);
       assert.equal(a.sync.status(dbA).conflict, null);
       assert.equal(a.sync.push(dbA).action, "up-to-date");
+    });
+
+    test("every push, pull, hold and choice lands in the shared history, one file per machine", (t) => {
+      const box = sandbox(t);
+      const a = machine(box, driver, "zagreus");
+      const b = machine(box, driver, "macbook");
+      const dbA = a.open();
+      dbA.exec(`INSERT INTO habits (name) VALUES ('Read')`);
+      a.sync.push(dbA);
+      b.sync.prepare();
+      const dbB = b.open();
+      dbB.exec(`INSERT INTO habits (name) VALUES ('Mac')`);
+      b.sync.push(dbB);
+      dbA.exec(`INSERT INTO habits (name) VALUES ('PC')`);
+      a.sync.push(dbA);
+      a.sync.resolve("local", dbA);
+
+      const h = readHistory(box.file("sync"), { app: "habits" });
+      assert.deepEqual(
+        h.map((e) => `${e.machine} ${e.event}${e.from ? ` from ${e.from}` : ""}`),
+        ["zagreus pushed", "macbook pulled from zagreus", "macbook pushed", "zagreus held from macbook", "zagreus kept-local"],
+      );
+      assert.equal(h[0].total, 1);
+      assert.deepEqual(readHistory(box.file("sync")).length, 5);
+      assert.ok(existsSync(box.file("sync", "habits", "history", "zagreus.jsonl")));
+      assert.ok(existsSync(box.file("sync", "habits", "history", "macbook.jsonl")));
     });
 
     test("keeping this machine's data pushes it over the other's", (t) => {
