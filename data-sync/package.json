@@ -1,0 +1,48 @@
+{
+  "name": "@btkulka/data-sync",
+  "version": "0.1.0",
+  "description": "An app's SQLite data on every machine of Ben's without a server: before serving, an app looks on the tailnet for a copy of itself already running and attaches to it (its own port proxies there); otherwise it pulls the newest snapshot from the Syncthing folder and serves, pushing a byte-stable SQL snapshot after each change. Two machines that both changed are never merged: the local copy is backed up and the choice is Ben's. Works on a better-sqlite3 Database or a node:sqlite DatabaseSync that the app hands in.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "data-sync"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "!dist/**/testing",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/sqlite-store": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.0.0",
+    "better-sqlite3": "^12.11.1",
+    "typescript": "^5.6.0"
+  }
+}

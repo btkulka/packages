@@ -9,6 +9,7 @@ The home for Ben's shared packages: code more than one app uses, kept in one pla
 | [`lore-core`](lore-core) (`@datrapscallion/lore-core`) | LanceDB knowledge store for game lore | orson |
 | [`mcp-kit`](mcp-kit) | MCP server plumbing: results, stdio and HTTP serving, parent watchdog, stdio↔HTTP bridge; one SDK and zod for every app | (migrating) |
 | [`sqlite-store`](sqlite-store) | SQLite open with pragmas, migrations, transactions, JSON and settings helpers, for better-sqlite3 or node:sqlite passed in by the app | (migrating) |
+| [`data-sync`](data-sync) | An app's SQLite data on every machine without a server: look on the tailnet for the app already serving and pass this machine's port through to it, else pull the newest snapshot from the Syncthing folder and serve, pushing a snapshot after each change; both changed means backed up and held for Ben | (habit-tracker, next) |
 | [`electron-kit`](electron-kit) | Electron main and preload scaffolding: typed IPC, single instance, window state, tray, window controls, safe external links, and a web host that serves the app as a web app (its page and IPC over HTTP, for a Benhäus tab) | (migrating) |
 | [`proc-kit`](proc-kit) | Process and dev tooling: port owners, free a port, kill a tree, detached spawn, wait for port or HTTP, Electron env, PATH lookup | (migrating), media-kit, llm-kit |
 | [`llm-kit`](llm-kit) | LLM transport: `claude` CLI runs, OpenAI-compatible and Ollama chat, JSON from model output | (migrating) |

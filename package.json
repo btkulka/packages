@@ -6,8 +6,8 @@
     "*"
   ],
   "scripts": {
-    "build": "npm run build -w @btkulka/proc-kit && npm run build --workspaces --if-present",
-    "typecheck": "npm run build -w @btkulka/proc-kit && npm run typecheck --workspaces --if-present",
-    "test": "npm run build -w @btkulka/proc-kit && npm test --workspaces --if-present"
+    "build": "npm run build -w @btkulka/proc-kit -w @btkulka/sqlite-store && npm run build --workspaces --if-present",
+    "typecheck": "npm run build -w @btkulka/proc-kit -w @btkulka/sqlite-store && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @btkulka/proc-kit -w @btkulka/sqlite-store && npm test --workspaces --if-present"
   }
 }
