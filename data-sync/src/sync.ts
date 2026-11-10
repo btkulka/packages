@@ -153,7 +153,7 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
   const build = (state: State, local: Dump | null, remote: Manifest | null): SyncStatus => ({
     app,
     machine,
-    verdict: decideVerdict({ localSha: local?.sha ?? null, localTotal: local?.total ?? 0, remoteSha: remote?.sha ?? null, agreed: state.agreed }),
+    verdict: decideVerdict({ localSha: local?.sha ?? null, localTotal: local?.total ?? 0, remoteSha: remote?.sha ?? null, remoteTotal: remote?.total, agreed: state.agreed }),
     file,
     local: local ? info(local) : null,
     remote,

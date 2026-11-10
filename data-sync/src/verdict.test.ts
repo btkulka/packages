@@ -4,7 +4,8 @@ import { decideVerdict, type Agreement } from "./index.js";
 
 const never: Agreement = { local: null, remote: null };
 const agreed: Agreement = { local: "L0", remote: "R0" };
-const v = (localSha: string | null, remoteSha: string | null, a: Agreement, localTotal = 5) => decideVerdict({ localSha, localTotal, remoteSha, agreed: a });
+const v = (localSha: string | null, remoteSha: string | null, a: Agreement, localTotal = 5, remoteTotal?: number) =>
+  decideVerdict({ localSha, localTotal, remoteSha, remoteTotal, agreed: a });
 
 test("nothing anywhere, or only here", () => {
   assert.equal(v(null, null, never), "in-sync");
@@ -31,4 +32,16 @@ test("the same bytes on both sides is in sync whatever the history", () => {
 
 test("two machines that never agreed and differ: Ben chooses", () => {
   assert.equal(v("L0", "R0", never), "diverged");
+});
+
+test("empty is never data: a machine with no rows publishes nothing", () => {
+  assert.equal(v("E", null, never, 0), "in-sync");
+  assert.equal(v("E", null, agreed, 0), "in-sync");
+  assert.equal(v("E", "E2", never, 0, 0), "in-sync");
+});
+
+test("an empty snapshot never replaces rows here", () => {
+  assert.equal(v("L0", "E", agreed, 5, 0), "local-ahead");
+  assert.equal(v("L0", "E", never, 5, 0), "local-ahead");
+  assert.equal(v("L0", "R1", agreed, 5, 3), "remote-ahead");
 });
