@@ -11,6 +11,10 @@ export interface MirrorOptions {
   name: string;
   /** The sync folder. Default: the app's tailnet's. */
   dir?: string;
+  /** Only files this says yes to (their path relative to the folder, forward slashes). Default every file. */
+  include?: (path: string) => boolean;
+  /** Into subfolders too. Default true; false mirrors only the folder's own files (loose artwork in a data folder that also holds a browser profile). */
+  recursive?: boolean;
 }
 
 export interface MirrorResult {
@@ -25,7 +29,7 @@ const SLACK_MS = 2000;
 
 const skip = (name: string) => name.startsWith(".") || name.startsWith("~syncthing~") || name.includes(".sync-conflict-");
 
-function files(root: string): Map<string, number> {
+function files(root: string, include: (path: string) => boolean = () => true, recursive = true): Map<string, number> {
   const out = new Map<string, number>();
   const walk = (dir: string) => {
     let names: string[];
@@ -38,8 +42,12 @@ function files(root: string): Map<string, number> {
       if (skip(n)) continue;
       const p = join(dir, n);
       const s = statSync(p);
-      if (s.isDirectory()) walk(p);
-      else if (s.isFile()) out.set(relative(root, p).split(sep).join("/"), s.mtimeMs);
+      if (s.isDirectory()) {
+        if (recursive) walk(p);
+        continue;
+      }
+      const rel = relative(root, p).split(sep).join("/");
+      if (s.isFile() && include(rel)) out.set(rel, s.mtimeMs);
     }
   };
   walk(root);
@@ -64,8 +72,8 @@ function copy(from: string, to: string, mtimeMs: number) {
  */
 export function mirrorFolder(options: MirrorOptions): MirrorResult {
   const remote = join(options.dir ?? tailnetFor(options.app).syncDir, options.app, options.name);
-  const here = files(options.local);
-  const there = existsSync(remote) ? files(remote) : new Map<string, number>();
+  const here = files(options.local, options.include, options.recursive !== false);
+  const there = existsSync(remote) ? files(remote, options.include, options.recursive !== false) : new Map<string, number>();
   const result: MirrorResult = { copiedIn: [], copiedOut: [] };
   for (const [path, mtime] of here) {
     const theirs = there.get(path);

@@ -33,3 +33,15 @@ test("copies what's missing or newer each way, keeps times, deletes nothing, ski
   assert.equal(readFileSync(join(pc, "resume.pdf"), "utf8"), "v2");
   assert.deepEqual(mirrorFolder({ local: pc, app: "jobhunt", name: "resumes", dir: sync }), { copiedIn: [], copiedOut: [] });
 });
+
+test("include and recursive: only the folder's own images, never what's in its subfolders", (t) => {
+  const box = sandbox(t);
+  const sync = box.file("sync");
+  const data = box.file("data");
+  const at = Date.parse("2026-11-09T12:00:00Z");
+  put(join(data, "cover.png"), "png", at);
+  put(join(data, "notes.txt"), "txt", at);
+  put(join(data, "chrome-profile", "Default", "big.png"), "profile", at);
+  const r = mirrorFolder({ local: data, app: "nhi-dash", name: "artwork", dir: sync, recursive: false, include: (p) => /\.(png|jpe?g)$/i.test(p) });
+  assert.deepEqual(r.copiedOut, ["cover.png"]);
+});
