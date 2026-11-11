@@ -1,8 +1,23 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, test } from "node:test";
-import { findRunning, helloRoute, parseTailscaleStatus, serveOrAttach, servingHello, type Hello } from "./index.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, test, type TestContext } from "node:test";
+import {
+  findRunning,
+  helloRoute,
+  parseTailscaleStatus,
+  recordHistory,
+  serveOrAttach,
+  servingHello,
+  shaOf,
+  snapshotName,
+  writeSnapshot,
+  type Hello,
+  type ServeOrAttachOptions,
+} from "./index.js";
 
 /** A stand-in app: answers the hello as `hello`, and "<host> says hi" everywhere else. */
 function fakeApp(host: string, port: number, hello: () => Hello): Promise<Server> {
@@ -57,6 +72,36 @@ describe("findRunning", () => {
     });
     assert.equal(hit, null);
   });
+
+  test("a copy with rows is found before an empty one", { skip: process.platform === "darwin" }, async (t) => {
+    const port = await freePort();
+    const empty = await fakeApp("127.0.0.2", port, servingHello("habits", "hermes", () => 0));
+    const full = await fakeApp("127.0.0.3", port, servingHello("habits", "zagreus", () => 12));
+    t.after(() => Promise.all([close(empty), close(full)]));
+    const hit = await findRunning({
+      app: "habits",
+      port,
+      local: false,
+      peers: [
+        { name: "hermes", ip: "127.0.0.2", os: "macOS", online: true },
+        { name: "zagreus", ip: "127.0.0.3", os: "windows", online: true },
+      ],
+    });
+    assert.equal(hit?.name, "zagreus");
+    assert.equal(hit?.hello.rows, 12);
+  });
+});
+
+test("servingHello: the copy's rows when counted, left out when the count throws", () => {
+  assert.equal(servingHello("habits", "zagreus", () => 7309)().rows, 7309);
+  assert.equal("rows" in servingHello("habits", "zagreus")(), false);
+  assert.equal(
+    "rows" in
+      servingHello("habits", "zagreus", () => {
+        throw new Error("locked");
+      })(),
+    false,
+  );
 });
 
 describe("serveOrAttach", () => {
@@ -101,6 +146,70 @@ describe("serveOrAttach", () => {
     // The proxy let go of the port, so the app can listen on it.
     const mine = await fakeApp("127.0.0.1", port, servingHello("habits", "macbook"));
     await close(mine);
+  });
+
+  /** A sync folder that the history of each machine in `from` has reached. */
+  function syncFolder(t: TestContext, from: string[] = []): string {
+    const dir = mkdtempSync(join(tmpdir(), "data-sync-attach-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    for (const machine of from) recordHistory(dir, { at: new Date().toISOString(), app: "habits", machine, event: "pulled" });
+    return dir;
+  }
+
+  /** serveOrAttach on "macbook" while zagreus serves with `hello`. */
+  async function lookFromMacbook(t: TestContext, hello: () => Hello, options: Partial<ServeOrAttachOptions>) {
+    const port = await freePort();
+    const home = await fakeApp(otherMachine, port, hello);
+    t.after(() => close(home));
+    let served = 0;
+    const said: string[] = [];
+    const r = await serveOrAttach({
+      app: "habits",
+      port,
+      host: "127.0.0.1",
+      machine: "macbook",
+      peers: [{ name: "zagreus", ip: otherMachine, os: "windows", online: true }],
+      serve: () => served++,
+      checkMs: 60_000,
+      log: (line) => said.push(line),
+      ...options,
+    });
+    t.after(async () => r.mode === "attached" && (await r.stop()));
+    return { r, served, said: said.join("\n") };
+  }
+
+  const skip = process.platform === "darwin";
+
+  test("a machine with rows serves its own rather than pass through to an empty copy", { skip }, async (t) => {
+    const { r, served, said } = await lookFromMacbook(t, servingHello("habits", "zagreus", () => 0), { localRows: () => 7309, syncDir: syncFolder(t, ["zagreus"]) });
+    assert.equal(r.mode, "serving");
+    assert.equal(served, 1);
+    assert.match(said, /its copy is empty: serving this machine's 7309 rows here instead/);
+  });
+
+  test("a machine with rows serves its own rather than pass through to one that never synced with it", { skip }, async (t) => {
+    const { r, served, said } = await lookFromMacbook(t, servingHello("habits", "zagreus", () => 40), { localRows: async () => 7309, syncDir: syncFolder(t) });
+    assert.equal(r.mode, "serving");
+    assert.equal(served, 1);
+    assert.match(said, /never synced with this machine/);
+  });
+
+  test("passes through to a machine whose history or snapshot has reached this one", { skip }, async (t) => {
+    const byHistory = await lookFromMacbook(t, servingHello("habits", "Zagreus", () => 40), { localRows: () => 7309, syncDir: syncFolder(t, ["Zagreus"]) });
+    assert.equal(byHistory.r.mode, "attached");
+
+    const dir = syncFolder(t);
+    const sql = "SELECT 1;\n";
+    writeSnapshot(join(dir, "habits", snapshotName), "habits", "Zagreus", { sql, sha: shaOf(sql), rows: { habits: 40 }, total: 40, schemaVersion: 1 });
+    // An older build's hello carries no count: unknown, not empty.
+    const bySnapshot = await lookFromMacbook(t, servingHello("habits", "Zagreus"), { localRows: () => 7309, syncDir: dir });
+    assert.equal(bySnapshot.r.mode, "attached");
+  });
+
+  test("a machine with no rows of its own passes through, even to an empty copy", { skip }, async (t) => {
+    const { r, served } = await lookFromMacbook(t, servingHello("habits", "zagreus", () => 0), { localRows: () => 0, syncDir: syncFolder(t) });
+    assert.equal(r.mode, "attached");
+    assert.equal(served, 0);
   });
 });
 

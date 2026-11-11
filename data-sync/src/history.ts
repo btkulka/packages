@@ -43,6 +43,11 @@ export function historyFile(dir: string, app: string, machine: string): string {
   return join(dir, app, "history", `${safe(machine)}.jsonl`);
 }
 
+/** Whether `machine` has written history for the app into this sync folder, which means it shares the folder with this machine. */
+export function hasHistory(dir: string, app: string, machine: string): boolean {
+  return existsSync(historyFile(dir, app, machine));
+}
+
 /** Add one entry to this machine's history for the app. Never throws: history is a record, not the sync. */
 export function recordHistory(dir: string, entry: HistoryEntry): void {
   try {

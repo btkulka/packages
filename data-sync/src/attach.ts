@@ -1,6 +1,9 @@
 import { createServer, request, type IncomingMessage, type RequestOptions, type Server, type ServerResponse } from "node:http";
 import { connect, type Socket } from "node:net";
 import { hostname } from "node:os";
+import { join } from "node:path";
+import { hasHistory } from "./history.js";
+import { peekManifest, snapshotName } from "./snapshot.js";
 import { runsServers, tailnet, type Peer } from "./tailnet.js";
 import { tailnetFor, type TailnetConfig } from "./tailnets.js";
 
@@ -16,6 +19,8 @@ export interface Hello {
   startedAt: string;
   /** For an attached instance: the machine it proxies to. */
   target?: string;
+  /** For a serving instance: the rows its copy holds (DataSync.rows). 0 is an empty copy; absent (an older build): unknown. */
+  rows?: number;
 }
 
 export interface Running {
@@ -39,10 +44,21 @@ export function helloRoute(hello: () => Hello): (req: IncomingMessage, res: Serv
   };
 }
 
-/** A hello for this process: serving, from now. */
-export function servingHello(app: string, machine = hostname()): () => Hello {
+/**
+ * A hello for this process: serving, from now. `rows` counts the copy it serves (`() => sync.rows()`), so a
+ * machine with data never passes through to an empty one; a count that throws is left out.
+ */
+export function servingHello(app: string, machine = hostname(), rows?: () => number): () => Hello {
   const startedAt = new Date().toISOString();
-  return () => ({ app, machine, mode: "serving", pid: process.pid, startedAt });
+  return () => {
+    let n: number | undefined;
+    try {
+      n = rows?.();
+    } catch {
+      n = undefined;
+    }
+    return { app, machine, mode: "serving", pid: process.pid, startedAt, ...(typeof n === "number" && Number.isFinite(n) ? { rows: n } : {}) };
+  };
 }
 
 const hostPort = (host: string, port: number) => `${host.includes(":") ? `[${host}]` : host}:${port}`;
@@ -90,8 +106,8 @@ async function probe(host: string, port: number, app: string, timeoutMs: number,
 /**
  * The app serving its data right now, if any: this machine first (127.0.0.1), then every online machine
  * on the app's tailnet (tailnetFor(app), or `tailnet`) that runs servers, through that tailnet's proxy when it
- * has one. Attached instances don't count, so two attached machines can't point at each other. Null when
- * nothing answers within `timeoutMs`.
+ * has one. Attached instances don't count, so two attached machines can't point at each other, and a copy
+ * with rows is found before an empty one. Null when nothing answers within `timeoutMs`.
  */
 export async function findRunning(options: { app: string; port: number; local?: boolean; peers?: Peer[]; tailnet?: TailnetConfig; timeoutMs?: number }): Promise<Running | null> {
   const { app, port, timeoutMs = 1500 } = options;
@@ -107,7 +123,7 @@ export async function findRunning(options: { app: string; port: number; local?: 
   }
   const candidates = peers.filter((p) => p.online && runsServers(p));
   const found = await Promise.all(candidates.map(async (p) => ({ p, h: await probe(p.ip, port, app, timeoutMs, net.proxy) })));
-  const hit = found.find((f) => f.h);
+  const hit = found.find((f) => f.h && f.h.rows !== 0) ?? found.find((f) => f.h);
   return hit ? { url: `http://${hostPort(hit.p.ip, port)}`, host: hit.p.ip, name: hit.p.name, hello: hit.h!, proxy: net.proxy } : null;
 }
 
@@ -213,6 +229,15 @@ export interface ServeOrAttachOptions {
    * Called at once when nothing else is serving, or when the machine this one attached to goes away.
    */
   serve: () => unknown | Promise<unknown>;
+  /**
+   * The rows this machine's copy holds (`() => sync.rows()`). While it holds any, this machine doesn't pass
+   * through to a copy that is empty, or to a machine that has never synced with it (no history of that
+   * machine's and no snapshot from it in this machine's sync folder): it serves its own instead. Left out,
+   * it passes through to whatever is serving.
+   */
+  localRows?: () => number | Promise<number>;
+  /** Where to look for the other machine's history and snapshot. Default the app's tailnet's sync folder. */
+  syncDir?: string;
   /** How often an attached instance checks its target is still there. Default 5 s; two misses in a row and it takes over. */
   checkMs?: number;
   log?: (line: string) => void;
@@ -229,8 +254,23 @@ export type ServeOrAttach =
   | { mode: "attached"; running: Running; /** Stop proxying without taking over. */ stop: () => Promise<void> };
 
 /**
+ * Why a machine holding `mine` rows shouldn't pass through to `running`: its copy is empty, or it has never
+ * synced with this machine, so what it serves isn't this machine's data. Null when passing through is right.
+ */
+function passOver(app: string, running: Running, mine: number, dir: string): string | null {
+  if (mine <= 0) return null;
+  if (running.hello.rows === 0) return "its copy is empty";
+  const them = running.hello.machine;
+  const snapshotFrom = peekManifest(join(dir, app, snapshotName))?.machine;
+  if (!hasHistory(dir, app, them) && snapshotFrom?.toLowerCase() !== them.toLowerCase())
+    return `it has never synced with this machine (nothing of ${them}'s has reached ${join(dir, app)})`;
+  return null;
+}
+
+/**
  * Look before serving: if this app is already serving on another machine of its tailnet, proxy this
- * machine's port to it, and take over (serve) when it goes away; otherwise serve now.
+ * machine's port to it, and take over (serve) when it goes away; otherwise serve now. With `localRows`, a
+ * machine that has data serves it rather than passing through to an empty or never-synced copy.
  */
 export async function serveOrAttach(options: ServeOrAttachOptions): Promise<ServeOrAttach> {
   const { app, port } = options;
@@ -241,6 +281,19 @@ export async function serveOrAttach(options: ServeOrAttachOptions): Promise<Serv
     return { mode: "serving" };
   }
   if (running.name === "localhost") return { mode: "local", running };
+
+  let mine = 0;
+  try {
+    mine = (await options.localRows?.()) ?? 0;
+  } catch (e) {
+    log(`${app}: couldn't count this machine's rows: ${(e as Error).message}`);
+  }
+  const why = passOver(app, running, mine, options.syncDir ?? (options.tailnet ?? tailnetFor(app)).syncDir);
+  if (why) {
+    log(`${app} is serving on ${running.name}, but ${why}: serving this machine's ${mine} rows here instead.`);
+    await options.serve();
+    return { mode: "serving" };
+  }
 
   const proxy = await startProxy({ app, port, host: options.host, target: running, machine: options.machine });
   log(`${app} is serving on ${running.name}; this machine's port ${port} passes through to ${running.url}`);

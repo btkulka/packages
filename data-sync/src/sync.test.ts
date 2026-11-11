@@ -38,6 +38,17 @@ for (const { name, driver } of drivers) {
       assert.equal(b.sync.status().verdict, "in-sync");
     });
 
+    test("rows() counts what a snapshot would carry without dumping, and 0 with no database", (t) => {
+      const box = sandbox(t);
+      const a = machine(box, driver, "zagreus", { exclude: ["cache"] });
+      assert.equal(a.sync.rows(), 0);
+      const db = a.open();
+      db.exec(`CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT); INSERT INTO cache VALUES ('k', 'v'); INSERT INTO habits (name) VALUES ('Read'), ('Run')`);
+      assert.equal(a.sync.rows(db), 2);
+      assert.equal(a.sync.rows(), 2);
+      assert.equal(a.sync.rows(db), a.sync.status(db).local?.total);
+    });
+
     test("whoever changed last is pushed and the other pulls, back and forth", (t) => {
       const box = sandbox(t);
       const a = machine(box, driver, "zagreus");

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { openDatabase, type SqliteDriver, type SqliteHandle } from "@btkulka/sqlite-store";
-import { dumpDatabase, type Dump } from "./dump.js";
+import { countRows, dumpDatabase, type Dump } from "./dump.js";
 import { backupDatabase, conflictCopies, peekManifest, readSnapshot, restoreSnapshot, snapshotName, writeSnapshot, type Manifest } from "./snapshot.js";
 import { defaultSyncDir, tailnetFor } from "./tailnets.js";
 import { recordHistory, type HistoryEntry, type HistoryEvent } from "./history.js";
@@ -89,6 +89,11 @@ export interface DataSync<D extends SqliteHandle> {
   readonly file: string;
   /** Where things stand. With the app's open handle, or none (it opens the file read-only). */
   status(db?: D): SyncStatus;
+  /**
+   * How many rows this machine's copy holds, counted as a snapshot would carry them (0 with no database here),
+   * without dumping it. For serveOrAttach's `localRows` and the serving hello's `rows`.
+   */
+  rows(db?: D): number;
   /**
    * Before the app opens its database: restore the other machine's newer data, push this machine's if
    * it's the newer, or hold a conflict (backing this copy up) when both changed.
@@ -202,6 +207,17 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
   const status = (db?: D): SyncStatus => {
     const snap = readSnapshot(file);
     return build(readState(), dumpLocal(db), snap?.manifest ?? null);
+  };
+
+  const rows = (db?: D): number => {
+    if (db) return countRows(db, { exclude });
+    if (!existsSync(dbPath)) return 0;
+    const ro = openDatabase(driver, dbPath, { readOnly: true });
+    try {
+      return countRows(ro, { exclude });
+    } finally {
+      ro.close();
+    }
   };
 
   const prepare: DataSync<D>["prepare"] = () => {
@@ -370,5 +386,5 @@ export function createDataSync<D extends SqliteHandle>(options: DataSyncOptions<
     return { action: "restart", status: build(state, dumpLocal(db), readSnapshot(file)?.manifest ?? null) };
   };
 
-  return { app, file, status, prepare, push, watch, resolve };
+  return { app, file, status, rows, prepare, push, watch, resolve };
 }

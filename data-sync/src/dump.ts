@@ -94,3 +94,15 @@ export function dumpDatabase(db: SqliteHandle, options: DumpOptions = {}): Dump 
     db.exec("COMMIT");
   }
 }
+
+/** The rows a dump would carry (its `total`), counted without writing one: cheap enough to answer every hello. */
+export function countRows(db: SqliteHandle, options: DumpOptions = {}): number {
+  const exclude = new Set(options.exclude ?? []);
+  const tables = db.prepare(`SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL`).all() as { name: string; sql: string }[];
+  let total = 0;
+  for (const t of tables) {
+    if (exclude.has(t.name) || /^\s*CREATE\s+VIRTUAL\s+TABLE/i.test(t.sql)) continue;
+    total += Number(scalar(db, `SELECT count(*) FROM ${quoteIdent(t.name)}`) ?? 0);
+  }
+  return total;
+}

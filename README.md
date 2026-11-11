@@ -23,6 +23,7 @@ The home for Ben's shared packages: code more than one app uses, kept in one pla
 | [`resend-client`](resend-client) | Resend API client: emails (Idempotency-Key, batches of 100), domains, global contacts with an upsert by email, segments and their members, broadcasts as drafts sent on call; merge tags, the unsubscribe link and a throttle; browser-safe | (nhi-dash, next) |
 | [`gemini-client`](gemini-client) | Gemini API (Google AI Studio) client and Benhäus credential adapter: models, video with Gemini Omni Flash (start, wait, download the MP4; Veo left the Gemini API in Oct 2026), a per-second price table; browser-safe, plus the `gemini-video` CLI (prompt or jobs file to `<name>.mp4`, estimate first, `--yes` to spend) | (toejam, next) |
 | [`ableton-als`](ableton-als) | Read Ableton Live sets: header, file references, missing samples | (migrating) |
+| [`claude-kit`](claude-kit) | Claude Code chats in any app, the way the Benhäus panel has them: standing Agent SDK sessions per chat (asks, modes, models, images, past chats, the app's own MCP server), over Electron IPC or HTTP, with a corner button, drawer, panel and chat page in React or a `<claude-widget>` element for pages without React | benhaus, orange-friction, nhi-dashboard |
 | [`scaffold`](scaffold) | A new app of Ben's, planned, written and handed to Claude Code: the plan and its questions, the files per kind (Electron, web, service, CLI, MCP, bot, package), a placeholder icon, the brief; `btkulka-scaffold` from a terminal | benhaus (the New app screen) |
 
 ## Using a package from an app

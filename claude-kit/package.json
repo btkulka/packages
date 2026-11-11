@@ -1,0 +1,118 @@
+{
+  "name": "@btkulka/claude-kit",
+  "version": "0.1.0",
+  "description": "Claude Code chats in any of Ben's apps, the way the Benhäus panel has them: standing Agent SDK sessions per chat with asks, modes, models, images, past chats and transcripts read back (host), over Electron IPC or HTTP with live updates (transports), and the screens to go with them: a corner button, a drawer, the panel and a chat page in React, or a <claude-widget> element with React inside for pages without it.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "claude-kit"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./host": {
+      "types": "./dist/esm/host/index.d.ts",
+      "import": "./dist/esm/host/index.js",
+      "require": "./dist/cjs/host/index.js"
+    },
+    "./electron/main": {
+      "types": "./dist/esm/electron/main.d.ts",
+      "import": "./dist/esm/electron/main.js",
+      "require": "./dist/cjs/electron/main.js"
+    },
+    "./electron/preload": {
+      "types": "./dist/esm/electron/preload.d.ts",
+      "import": "./dist/esm/electron/preload.js",
+      "require": "./dist/cjs/electron/preload.js"
+    },
+    "./http": {
+      "types": "./dist/esm/http/index.d.ts",
+      "import": "./dist/esm/http/index.js",
+      "require": "./dist/cjs/http/index.js"
+    },
+    "./client": {
+      "types": "./dist/esm/client/index.d.ts",
+      "import": "./dist/esm/client/index.js",
+      "require": "./dist/cjs/client/index.js"
+    },
+    "./react": {
+      "types": "./dist/esm/react/index.d.ts",
+      "import": "./dist/esm/react/index.js",
+      "require": "./dist/cjs/react/index.js"
+    },
+    "./element": "./dist/element/claude-kit.js",
+    "./styles.css": "./dist/styles.css"
+  },
+  "typesVersions": {
+    "*": {
+      "host": [
+        "dist/esm/host/index.d.ts"
+      ],
+      "electron/main": [
+        "dist/esm/electron/main.d.ts"
+      ],
+      "electron/preload": [
+        "dist/esm/electron/preload.d.ts"
+      ],
+      "http": [
+        "dist/esm/http/index.d.ts"
+      ],
+      "client": [
+        "dist/esm/client/index.d.ts"
+      ],
+      "react": [
+        "dist/esm/react/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "sideEffects": [
+    "*.css",
+    "./dist/element/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs && node scripts/assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.element.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "electron": "^41.10.7",
+    "esbuild": "^0.25.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "typescript": "^5.6.0"
+  }
+}

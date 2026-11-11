@@ -12,11 +12,12 @@ import Database from "better-sqlite3";
 import { createDataSync, helloRoute, serveOrAttach, servingHello } from "@btkulka/data-sync";
 
 const sync = createDataSync({ app: "habit-tracker", dbPath: DB_PATH, driver: Database, schemaVersion: LATEST, notify: (msg) => benhaus.notify(msg) });
-const hello = helloRoute(servingHello("habit-tracker"));
+const hello = helloRoute(servingHello("habit-tracker", undefined, () => sync.rows()));
 
 await serveOrAttach({
   app: "habit-tracker",
   port: 42248,
+  localRows: () => sync.rows(),     // a machine with data never passes through to an empty or never-synced copy
   serve: () => {
     sync.prepare();                 // pull the other machine's newer data, or hold a conflict
     const db = openDb();            // the app's own open + migrations
@@ -31,7 +32,8 @@ await serveOrAttach({
 - **Newer code wins nothing by accident**: pass `schemaVersion` (the newest `user_version` the app's code knows) and a snapshot from newer code is never pulled; the app here needs updating first.
 - **`exclude`** lists tables whose rows stay on each machine (caches, this machine's own settings): never pushed, and kept through a pull.
 - **Backups** go to `backups/` beside the database before every pull and when a conflict is held.
-- `findRunning` probes `GET /_data-sync/hello` on 127.0.0.1, then every online tailnet machine that runs servers (phones are skipped). Only instances answering `mode: "serving"` count, so two attached machines can't point at each other. The peers come from `tailscale status --json` (`TAILSCALE_CLI` overrides the binary; the Mac app's is found on its own). No Tailscale means no peers: the app serves on its own.
+- `findRunning` probes `GET /_data-sync/hello` on 127.0.0.1, then every online tailnet machine that runs servers (phones are skipped). Only instances answering `mode: "serving"` count, so two attached machines can't point at each other, and one whose hello says it holds rows is found before an empty one (`servingHello`'s third argument counts them; `sync.rows()` is cheap enough for every hello).
+- **Never pass through to the wrong data.** Given `localRows`, a machine holding rows serves its own instead of passing through when the copy serving elsewhere is empty (its hello says `rows: 0`), or when that machine has never synced with this one: neither a history file of its nor a snapshot from it has reached this machine's sync folder. (On 2026-11-10 the Mac, never paired in Syncthing, served an empty copy and the PC passed its port through to it, so Ben's habits looked gone.) A hello from an older build carries no count and is taken at its word if it shares the folder. The peers come from `tailscale status --json` (`TAILSCALE_CLI` overrides the binary; the Mac app's is found on its own). No Tailscale means no peers: the app serves on its own.
 - **More than one tailnet.** Different apps can sync on different tailnets (Ben's own and the persona's). Benhäus writes `~/.benhaus/tailnets.json` (`BENHAUS_TAILNETS` overrides): each tailnet's Syncthing folder, and for one Benhäus runs as a userspace tailscaled, its CLI socket and its HTTP proxy, plus which app is on which (`apps`). `tailnetFor(app)` reads it: `createDataSync` and `mirrorFolder` default to that tailnet's folder, and `findRunning`/`serveOrAttach` look for peers with `tailscale --socket` and reach them through the proxy (CONNECT for WebSocket upgrades). No file, or an app it doesn't name, means the system Tailscale and `~/.benhaus-sync`, as before. Making an app reachable from a userspace tailnet (`tailscale serve`) is Benhäus's job, not the app's.
 - **Files** (resumes, artwork) aren't in the database: `mirrorFolder({ local, app, name })` keeps a folder the same through `<sync>/<app>/<name>`, copying whatever is missing or newer each way (times kept) and never deleting. Call it before serving and after the app adds a file.
 - Virtual tables (FTS) aren't carried yet: `dumpDatabase` refuses them by name.

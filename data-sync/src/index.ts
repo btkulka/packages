@@ -1,4 +1,4 @@
-export { dumpDatabase, shaOf, type Dump, type DumpOptions } from "./dump.js";
+export { countRows, dumpDatabase, shaOf, type Dump, type DumpOptions } from "./dump.js";
 export {
   backupDatabase,
   conflictCopies,
@@ -24,7 +24,7 @@ export {
   type SyncStatus,
 } from "./sync.js";
 export { defaultSyncDir, listTailnets, tailnetFor, tailnetsFile, type TailnetConfig } from "./tailnets.js";
-export { historyFile, readHistory, recordHistory, type HistoryEntry, type HistoryEvent } from "./history.js";
+export { hasHistory, historyFile, readHistory, recordHistory, type HistoryEntry, type HistoryEvent } from "./history.js";
 export { mirrorFolder, type MirrorOptions, type MirrorResult } from "./mirror.js";
 export { parseTailscaleStatus, runsServers, tailnet, tailscaleCli, type Peer, type Tailnet } from "./tailnet.js";
 export {
