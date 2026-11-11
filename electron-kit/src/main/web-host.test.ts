@@ -79,7 +79,15 @@ describe("createWebHost", () => {
     });
     ipc.on("tell", (_e: unknown, x: unknown) => told.push(x));
     // Port 0 picks a free one; the host reports what it got.
-    host = await createWebHost({ port: 0, rendererDir: join(dir, "renderer"), preloadFile: join(dir, "preload.cjs"), ipc: ipc.registry, platform: "win32", info: { app: "test" } });
+    // The app's own route: /media/<name> answered by the app, anything else under it left to the host.
+    const handle = (req: { url?: string }, res: import("node:http").ServerResponse) => {
+      const m = /^\/media\/(\w+)$/.exec((req.url ?? "").split("?")[0]);
+      if (!m) return false;
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end(`media ${m[1]}`);
+      return true;
+    };
+    host = await createWebHost({ port: 0, rendererDir: join(dir, "renderer"), preloadFile: join(dir, "preload.cjs"), ipc: ipc.registry, platform: "win32", info: { app: "test" }, handle });
     assert.notEqual(host.port, 0);
     assert.equal(host.url, `http://127.0.0.1:${host.port}`);
   });
@@ -137,6 +145,15 @@ describe("createWebHost", () => {
     host.push("tick", 8, "two");
     assert.equal(await read(), 'event: ipc\ndata: {"channel":"tick","args":[8,"two"]}\n\n');
     await reader.cancel();
+  });
+
+  test("the app's own routes come before the page's files, and never shadow /__kit/", async () => {
+    const r = await fetch(url("/media/cover?x=1"));
+    assert.equal(r.status, 200);
+    assert.equal(await r.text(), "media cover");
+    // Not the app's: the host carries on (a router path gets the page).
+    assert.ok((await (await fetch(url("/media/a/b"))).text()).includes("<script"));
+    assert.ok((await (await fetch(url("/__kit/preload.js"))).text()).includes("__kitRequire"));
   });
 
   test("a path that leaves the folder is refused", async () => {

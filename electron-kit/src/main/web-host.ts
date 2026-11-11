@@ -36,6 +36,13 @@ export interface WebHostOptions {
   info?: Record<string, unknown>;
   /** The page served for paths that aren't files (a router's deep link). Default index.html. */
   fallback?: string;
+  /**
+   * Routes the app answers itself, tried before the page's files (never for /__kit/): what stood in for a custom
+   * protocol in the window, an image endpoint say. Resolve true when it answered, false to let the host serve the
+   * path. These aren't behind the Origin and header checks the IPC routes have, so answer only what is safe for any
+   * page to load (a GET of an image), or check the request's sec-fetch-site yourself.
+   */
+  handle?: (req: IncomingMessage, res: ServerResponse) => boolean | Promise<boolean>;
   /** Where to report requests that were refused and handler errors. Default: nowhere. */
   log?: (line: string) => void;
 }
@@ -355,6 +362,7 @@ export async function createWebHost(opts: WebHostOptions): Promise<WebHost> {
       }
       return void json(res, 404, { ok: false, error: "Not found" });
     }
+    if (opts.handle && (await opts.handle(req, res))) return;
     if (req.method !== "GET" && req.method !== "HEAD") return void json(res, 405, { ok: false, error: "Method not allowed" });
     const file = fileUnder(root, path);
     if (!file) return refuse(req, res, "Path leaves the renderer folder");
