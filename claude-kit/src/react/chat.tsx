@@ -1,14 +1,41 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import type { ChatAsk, ChatItem, ChatsState, ChatState, ClaudeMode } from "../types.js";
+import type { ChatAsk, ChatFile, ChatItem, ChatsState, ChatState, ClaudeMode, NewChatFile } from "../types.js";
 import { chatWord, MODES, needsSignIn, toolLabel } from "../words.js";
-import { useClaude, useStore, useTransport, useUi, type Where } from "./context.js";
+import { useClaude, useStore, useTransport, useUi, type ClaudeUi, type Where } from "./context.js";
 import { carriesFiles, Lightbox, picsIn, PicsContext, prepare, Thumb, type Pending, type Pic } from "./images.js";
 import { MenuButton } from "./menu.js";
-import { ChevronDown, HistoryIcon, ImageIcon, XIcon } from "./primitives.js";
-import { Prose } from "./prose.js";
+import { ChevronDown, HistoryIcon, XIcon } from "./primitives.js";
+import { PathButton, Prose } from "./prose.js";
 
 // One chat: its conversation (what's said, each tool call, asks), the reply
-// being written, and the box to write in, with images pasted, dropped or picked.
+// being written, and the box to write in, with images and files pasted, dropped or picked.
+
+/** A paperclip: the attach button. */
+const ClipIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 12.5 12.2 21.3a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.2 9.2a1.5 1.5 0 0 1-2.1-2.1L15.6 8" />
+  </svg>
+);
+
+/** "1.2 MB", "340 KB". */
+const sizeWord = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(n >= 10485760 ? 0 : 1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
+
+/** The files on a message that was sent: chips that open them (through the app, as a path in a reply does). */
+function FileChips({ files, ui }: { files: ChatFile[]; ui: ClaudeUi }) {
+  return (
+    <div className="ck-files" aria-label="Files sent">
+      {files.map((f, i) =>
+        ui.openPath || ui.openFolder ? (
+          <PathButton key={i} text={f.name} file={f.path} ui={ui} />
+        ) : (
+          <span key={i} className="ck-path" title={f.path}>
+            {f.name}
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ rows */
 
@@ -42,21 +69,25 @@ const DRAWN = ["kind", "id", "text", "name", "detail", "state", "result", "error
 /** Two rows that draw the same: a chat's change brings new copies of the rows it carries, so they're compared by what they show. */
 function sameItem(a: ChatItem, b: ChatItem): boolean {
   if (a === b) return true;
-  const x = a as Partial<Record<(typeof DRAWN)[number], unknown>> & { images?: { id: string }[] };
+  const x = a as Partial<Record<(typeof DRAWN)[number], unknown>> & { images?: { id: string }[]; files?: { path: string }[] };
   const y = b as typeof x;
   if (DRAWN.some((k) => x[k] !== y[k])) return false;
   const xi = x.images ?? [];
   const yi = y.images ?? [];
-  return xi.length === yi.length && xi.every((p, i) => p.id === yi[i].id);
+  const xf = x.files ?? [];
+  const yf = y.files ?? [];
+  return xi.length === yi.length && xi.every((p, i) => p.id === yi[i].id) && xf.length === yf.length && xf.every((f, i) => f.path === yf[i].path);
 }
 
 /** A row of the conversation, drawn again only when what it shows changes. */
 const Row = memo(
   function Row({ item }: { item: ChatItem }) {
-    if (item.kind === "you" && item.images)
+    const ui = useUi();
+    if (item.kind === "you" && (item.images || item.files))
       return (
         <div className="ck-mine">
-          <Thumbs pics={item.images} />
+          {item.images && <Thumbs pics={item.images} />}
+          {item.files && <FileChips files={item.files} ui={ui} />}
           {item.text && <div className="ck-you">{item.text}</div>}
         </div>
       );
@@ -134,13 +165,27 @@ export function ChatStrip({ list }: { list: ChatsState }) {
   );
 }
 
-// What was being typed in each chat, and the images waiting to go with it, survive closing the panel and switching chats.
+// What was being typed in each chat, and the images and files waiting to go with it, survive closing the panel and switching chats.
 const drafts = new Map<string, string>();
 const waiting = new Map<string, Pending[]>();
+const waitingFiles = new Map<string, PendingFile[]>();
 /** Images on one message, at most; the API takes more, but each then has to be smaller. */
 const MAX_PICS = 10;
+/** Files on one message, at most. */
+const MAX_FILES = 20;
+/** A file without a path on this machine (a browser's drop) is uploaded; over this it's turned away. */
+const MAX_UPLOAD = 50 * 1024 * 1024;
 
-/** A closed chat's draft and waiting images go with it. */
+/** A file waiting to go with the message: by its path on this machine when the transport can say it, else the file itself, to upload. */
+interface PendingFile {
+  key: string;
+  name: string;
+  size: number;
+  path?: string;
+  file?: File;
+}
+
+/** A closed chat's draft and waiting images and files go with it. */
 export function forgetClosed(open: string[]) {
   const keep = new Set(open);
   for (const id of drafts.keys()) if (!keep.has(id)) drafts.delete(id);
@@ -149,7 +194,16 @@ export function forgetClosed(open: string[]) {
       pics.forEach((p) => URL.revokeObjectURL(p.url));
       waiting.delete(id);
     }
+  for (const id of waitingFiles.keys()) if (!keep.has(id)) waitingFiles.delete(id);
 }
+
+/** A file's bytes as base64, to upload. */
+const toBase64 = async (f: File) => {
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
 
 /** How often a chat on screen says so (the host lets the session of one unseen for 5 minutes go). */
 const SEEN_EVERY_MS = 60_000;
@@ -189,6 +243,7 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
   const { Button, SegmentedControl, Tooltip } = ui.c;
   const [text, setText] = useState(drafts.get(chat.id) ?? "");
   const [pics, setPics] = useState<Pending[]>(waiting.get(chat.id) ?? []);
+  const [files, setFiles] = useState<PendingFile[]>(waitingFiles.get(chat.id) ?? []);
   const [dropping, setDropping] = useState(false);
   const [box, setBox] = useState<{ pics: Pic[]; at: number }>();
   const [signing, setSigning] = useState(false);
@@ -200,7 +255,7 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
 
   const { items, asks, mode } = chat;
   const working = chat.status === "working" || chat.status === "starting";
-  const ready = Boolean(text.trim() || pics.length);
+  const ready = Boolean(text.trim() || pics.length || files.length);
   const toastError = (e: unknown) => ui.toast(ui.errorText(e));
 
   useEffect(() => {
@@ -216,6 +271,10 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
     if (pics.length) waiting.set(chat.id, pics);
     else waiting.delete(chat.id);
   }, [pics]);
+  useEffect(() => {
+    if (files.length) waitingFiles.set(chat.id, files);
+    else waitingFiles.delete(chat.id);
+  }, [files]);
 
   // A session let go as idle starts again as the next message is typed.
   useEffect(() => void (chat.status === "off" && (warmed.current = false)), [chat.status]);
@@ -283,10 +342,10 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
     [shown, chat.folder],
   );
 
-  /** Pasted, dropped or picked: images join the message (ready to send), anything else is turned away. */
-  const attach = async (files: File[]) => {
-    const images = files.filter((f) => f.type.startsWith("image/"));
-    if (images.length < files.length) ui.toast(images.length ? "Only the images were attached." : "Only images can be attached here.");
+  /** Pasted, dropped or picked: images join the message as pictures, any other file as a file (by its path here, or uploaded). */
+  const attach = async (dropped: File[]) => {
+    const images = dropped.filter((f) => f.type.startsWith("image/"));
+    const others = dropped.filter((f) => !f.type.startsWith("image/"));
     const room = MAX_PICS - pics.length;
     if (images.length > room) ui.toast(`Up to ${MAX_PICS} images on one message.`);
     for (const f of images.slice(0, Math.max(0, room))) {
@@ -297,6 +356,17 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
         toastError(e);
       }
     }
+    const roomF = MAX_FILES - files.length;
+    if (others.length > roomF) ui.toast(`Up to ${MAX_FILES} files on one message.`);
+    for (const f of others.slice(0, Math.max(0, roomF))) {
+      const path = t.pathFor?.(f) || undefined;
+      if (!path && f.size > MAX_UPLOAD) {
+        ui.toast(`${f.name} is ${sizeWord(f.size)}; up to ${sizeWord(MAX_UPLOAD)} can be uploaded here.`);
+        continue;
+      }
+      const key = `${f.name}-${f.size}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      setFiles((all) => [...all, { key, name: f.name, size: f.size, path, file: path ? undefined : f }]);
+    }
     input.current?.focus({ preventScroll: true });
   };
 
@@ -306,23 +376,27 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
       if (p) URL.revokeObjectURL(p.url);
       return all.filter((x) => x.key !== key);
     });
+  const unattachFile = (key: string) => setFiles((all) => all.filter((x) => x.key !== key));
 
-  const send = () => {
+  const send = async () => {
     if (!ready) return;
     pinned.current = true;
-    const sending = { text, pics };
+    const sending = { text, pics, files };
     setText("");
     setPics([]);
+    setFiles([]);
     const images = sending.pics.map(({ data, type, name }) => ({ data, type, name }));
-    t.send(sending.text, chat.id, images.length ? images : undefined).then(
-      () => sending.pics.forEach((p) => URL.revokeObjectURL(p.url)),
-      (e) => {
-        // Nothing went: what was written and attached comes back.
-        toastError(e);
-        setText((x) => x || sending.text);
-        setPics((all) => [...sending.pics, ...all]);
-      },
-    );
+    try {
+      const sent: NewChatFile[] = await Promise.all(sending.files.map(async (f) => (f.path ? { path: f.path, name: f.name } : { data: await toBase64(f.file as File), name: f.name, type: f.file?.type })));
+      await t.send(sending.text, chat.id, images.length ? images : undefined, sent.length ? sent : undefined);
+      sending.pics.forEach((p) => URL.revokeObjectURL(p.url));
+    } catch (e) {
+      // Nothing went: what was written and attached comes back.
+      toastError(e);
+      setText((x) => x || sending.text);
+      setPics((all) => [...sending.pics, ...all]);
+      setFiles((all) => [...sending.files, ...all]);
+    }
   };
 
   /** Claude Code isn't signed in: the app's Sign in, from here. Once it's in, the chat starts again by itself (or with Start again). */
@@ -410,12 +484,22 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
       </PicsContext.Provider>
 
       <footer className="ck-foot">
-        {pics.length > 0 && (
-          <div className="ck-tray" aria-label="Images to send">
+        {(pics.length > 0 || files.length > 0) && (
+          <div className="ck-tray" aria-label="Images and files to send">
             {pics.map((p) => (
               <span key={p.key} className="ck-pending" title={p.name}>
                 <img src={p.url} alt={p.name} />
                 <button type="button" className="ck-unpend" aria-label={`Remove ${p.name}`} onClick={() => unattach(p.key)}>
+                  <XIcon size={10} />
+                </button>
+              </span>
+            ))}
+            {files.map((f) => (
+              <span key={f.key} className="ck-pendfile" title={f.path ?? `${f.name} (uploaded when sent)`}>
+                <ClipIcon size={13} />
+                <span className="ck-fname">{f.name}</span>
+                <span className="ck-fsize">{sizeWord(f.size)}</span>
+                <button type="button" className="ck-unpend" aria-label={`Remove ${f.name}`} onClick={() => unattachFile(f.key)}>
                   <XIcon size={10} />
                 </button>
               </span>
@@ -438,11 +522,11 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
             }
           }}
           onPaste={(e) => {
-            // A copied image attaches; text that came with it (a spreadsheet's cells) pastes as text instead.
-            const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
-            if (!files.length || e.clipboardData.getData("text/plain").trim()) return;
+            // A copied image or file attaches; text that came with it (a spreadsheet's cells) pastes as text instead.
+            const pasted = [...e.clipboardData.files];
+            if (!pasted.length || e.clipboardData.getData("text/plain").trim()) return;
             e.preventDefault();
-            void attach(files);
+            void attach(pasted);
           }}
           // A phone's keyboard has no Shift+Enter, so there Enter is a new line and Send sends.
           enterKeyHint={ui.phone ? "enter" : "send"}
@@ -474,15 +558,14 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
             <SegmentedControl label="How Claude asks" value={mode} onChange={(v) => setMode(v as ClaudeMode)} options={MODES.map((m) => ({ value: m.value, label: m.label }))} />
           )}
           <span className="ck-grow" />
-          <Tooltip label="Attach images" sub="Or paste or drop them here">
-            <button type="button" className="ck-iconbtn" aria-label="Attach images" onClick={() => picker.current?.click()}>
-              <ImageIcon />
+          <Tooltip label="Attach images or files" sub="Or paste or drop them here">
+            <button type="button" className="ck-iconbtn" aria-label="Attach images or files" onClick={() => picker.current?.click()}>
+              <ClipIcon />
             </button>
           </Tooltip>
           <input
             ref={picker}
             type="file"
-            accept="image/*"
             multiple
             hidden
             onChange={(e) => {
@@ -503,7 +586,7 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
         {hint && <span className="ck-caption ck-ink3">{hint}</span>}
       </footer>
 
-      {dropping && <div className="ck-drop">Drop images to attach them</div>}
+      {dropping && <div className="ck-drop">Drop images or files to attach them</div>}
       {box && <Lightbox pics={box.pics} at={box.at} folder={chat.folder} onClose={() => setBox(undefined)} />}
     </div>
   );

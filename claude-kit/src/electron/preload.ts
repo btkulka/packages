@@ -18,8 +18,11 @@ interface IpcRendererLike {
   removeListener(channel: string, listener: (event: any, ...args: any[]) => void): unknown;
 }
 
-/** `saveDialog`: main was given a Save dialog (attachIpc's dialog and app), so Download uses it instead of the browser's download. */
-export function claudeBridge(ipcRenderer: IpcRendererLike, o: { prefix?: string; saveDialog?: boolean } = {}): ClaudeTransport {
+/**
+ * `saveDialog`: main was given a Save dialog (attachIpc's dialog and app), so Download uses it instead of the browser's download.
+ * `pathFor`: Electron's webUtils.getPathForFile, so a dropped or picked file is attached by its path instead of uploaded.
+ */
+export function claudeBridge(ipcRenderer: IpcRendererLike, o: { prefix?: string; saveDialog?: boolean; pathFor?: (file: object) => string | undefined } = {}): ClaudeTransport {
   const prefix = o.prefix ?? "claude";
   const call =
     <R>(name: string) =>
@@ -40,6 +43,7 @@ export function claudeBridge(ipcRenderer: IpcRendererLike, o: { prefix?: string;
     // Over real IPC the bytes come as a Uint8Array; over a JSON transport (electron-kit's web host) as {type: "Buffer", data}.
     image: (...args: unknown[]) => (call<ImageBytesOut>("image")(...args) as Promise<ImageBytesOut>).then((r) => ({ ...r, bytes: asBytes(r.bytes) })),
     ...(o.saveDialog ? { saveImage: call<string | undefined>("saveImage") } : {}),
+    ...(o.pathFor ? { pathFor: o.pathFor } : {}),
     stop: call("stop"),
     newChat: call("new"),
     select: call("select"),

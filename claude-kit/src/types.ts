@@ -21,9 +21,20 @@ export interface ChatImage {
 /** An image to send with a message: prepared by the screen (base64), or a file on the host's machine. */
 export type NewChatImage = { data: string; type: string; name?: string } | { path: string; name?: string };
 
+/** A file attached to a message: on the host's machine, by path (the host keeps what a screen uploads in its chat-files folder). Claude reads it there with its tools. */
+export interface ChatFile {
+  path: string;
+  name: string;
+  /** Bytes; none for a folder. */
+  size?: number;
+}
+
+/** A file to send with a message: one on the host's machine by path (a folder too), or bytes a screen uploads (a phone's picker), which the host keeps. */
+export type NewChatFile = { path: string; name?: string } | { data: string; name: string; type?: string };
+
 /** A row of a conversation. */
 export type ChatItem =
-  | { kind: "you"; id: string; text: string; images?: ChatImage[] }
+  | { kind: "you"; id: string; text: string; images?: ChatImage[]; files?: ChatFile[] }
   | { kind: "claude"; id: string; text: string }
   | { kind: "tool"; id: string; name: string; detail?: string; state: "running" | "done" | "error"; result?: string; images?: ChatImage[] }
   | { kind: "note"; id: string; text: string; error?: boolean };
@@ -147,7 +158,10 @@ export interface ClaudeTransport {
   start(chat?: string): Promise<ChatState>;
   /** The screen shows these chats: each reads its conversation in if it hasn't, and its session isn't let go as unseen. */
   seen(chats: string | string[]): Promise<void>;
-  send(text: string, chat?: string, images?: NewChatImage[]): Promise<ChatState>;
+  /** Images go to Claude as pictures; files are listed on the message by path, and Claude reads them with its tools. */
+  send(text: string, chat?: string, images?: NewChatImage[], files?: NewChatFile[]): Promise<ChatState>;
+  /** A dropped or picked file's path on this machine (Electron's webUtils.getPathForFile), so it's attached by path instead of uploaded. Absent in a browser. */
+  pathFor?(file: object): string | undefined;
   /** An image to draw: a kept image's id, or a path (relative to `folder`), file:, data: or http(s) address from a reply. */
   image(ref: string, folder?: string, thumb?: ThumbSize): Promise<ImageBytesOut>;
   /** Saves an image somewhere the host chooses (a Save dialog). Without it, the screen downloads it through the browser. */

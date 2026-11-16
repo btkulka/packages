@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { writeFileSync } from "node:fs";
 import type { ChatHost } from "../host/host.js";
 import type { ImageTools } from "../host/images.js";
-import type { AskDecision, ClaudeMode, NewChatImage, NewChatOptions, ThumbSize } from "../types.js";
+import type { AskDecision, ClaudeMode, NewChatFile, NewChatImage, NewChatOptions, ThumbSize } from "../types.js";
 
 // @btkulka/claude-kit/electron/main: a ChatHost over Electron IPC. The
 // preload half (./preload) turns these channels back into a ClaudeTransport
@@ -99,7 +99,7 @@ export function attachIpc(host: ChatHost, o: AttachIpcOptions): () => void {
     [ch.state]: () => host.state(),
     [ch.start]: (chat?: string) => host.start(chat),
     [ch.seen]: (chats: string | string[]) => host.seen(chats),
-    [ch.send]: (text: string, chat?: string, images?: NewChatImage[]) => host.send(text, chat, images),
+    [ch.send]: (text: string, chat?: string, images?: NewChatImage[], files?: NewChatFile[]) => host.send(text, chat, images, files),
     [ch.image]: (ref: string, folder?: string, thumb?: ThumbSize) => host.image(ref, folder, thumb),
     [ch.stop]: (chat?: string) => host.stop(chat),
     [ch.newChat]: (opts?: NewChatOptions) => host.newChat(opts),

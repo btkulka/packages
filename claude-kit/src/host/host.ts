@@ -4,6 +4,7 @@ import { diffItems } from "../patch.js";
 import type {
   AskDecision,
   ChatAsk,
+  ChatFile,
   ChatImage,
   ChatItem,
   ChatPatch,
@@ -14,11 +15,13 @@ import type {
   ClaudeEvent,
   ClaudeMode,
   ImageBytesOut,
+  NewChatFile,
   NewChatImage,
   NewChatOptions,
   PastChat,
   ThumbSize,
 } from "../types.js";
+import { FileStore } from "./files.js";
 import { ImageStore, type ImageTools } from "./images.js";
 import { contextWrapper, detailOf, firstLine, MAX_ITEMS, rowMaker } from "./items.js";
 import type { AgentSdk, CanUseToolLike, PermissionResultLike, QueryLike, Said, SdkMessage, SdkUserMessage } from "./sdk.js";
@@ -88,6 +91,8 @@ export interface ChatHostOptions {
   legacyFile?: string;
   /** Where kept images go: dataDir/chat-images. */
   imagesDir?: string;
+  /** Where files a screen uploads go: dataDir/chat-files. */
+  filesDir?: string;
   /** Measuring and scaling images for thumbnails and over-size sends (electron/main's nativeImageTools). */
   imageTools?: ImageTools;
   /** Chats a screen holds open elsewhere (a tab of their own), so a blank one isn't dropped as spare. */
@@ -192,10 +197,12 @@ export class ChatHost {
   private readonly context: ReturnType<typeof contextWrapper>;
   private readonly rows: ReturnType<typeof rowMaker>;
   readonly images: ImageStore;
+  readonly files: FileStore;
 
   constructor(private readonly opts: ChatHostOptions) {
     this.file = join(opts.dataDir, opts.file ?? "claude-chats.json");
     this.images = new ImageStore(opts.imagesDir ?? join(opts.dataDir, "chat-images"), opts.imageTools);
+    this.files = new FileStore(opts.filesDir ?? join(opts.dataDir, "chat-files"));
     this.context = contextWrapper(opts.contextTag ?? "app-context");
     this.rows = rowMaker((s) => this.images.keepBlock(s), this.context.strip);
     const saved = this.readSaved();
@@ -702,10 +709,15 @@ export class ChatHost {
 
   /* --------------------------------------------------------------- actions */
 
-  /** Sends a message to a chat (the one shown unless named), as if typed there, with any images attached. */
-  async send(text: string, ref?: string, images?: NewChatImage[]): Promise<ChatState> {
+  /** Sends a message to a chat (the one shown unless named), as if typed there, with any images and files attached. */
+  async send(text: string, ref?: string, images?: NewChatImage[], files?: NewChatFile[]): Promise<ChatState> {
     const c = this.find(ref);
-    return this.say(c, text, await this.attach(c, images));
+    return this.say(c, text, await this.attach(c, images), this.attachFiles(c, files));
+  }
+
+  /** Files to send: checked (or kept, when uploaded), named on the message for the screens and listed for Claude. */
+  private attachFiles(c: Chat, files?: NewChatFile[] | null): ChatFile[] {
+    return (files ?? []).map((f) => this.files.incoming(f, c.state.folder));
   }
 
   /** Images to send, kept for the screens and as the content blocks Claude reads. */
@@ -724,11 +736,12 @@ export class ChatHost {
    * chat was started with, if any is still waiting. Images go ahead of the
    * text, as the API suggests.
    */
-  private say(c: Chat, text: string, images: Awaited<ReturnType<ChatHost["attach"]>> = []): ChatState {
+  private say(c: Chat, text: string, images: Awaited<ReturnType<ChatHost["attach"]>> = [], files: ChatFile[] = []): ChatState {
     const t = text.trim();
-    if (!t && !images.length) throw new Error("Say something to send.");
+    if (!t && !images.length && !files.length) throw new Error("Say something to send.");
     this.notify(c);
-    const words = this.context.wrap(t, c.context);
+    // The files go to Claude as a list of paths after the words (it reads them with its tools); the screens show them as chips.
+    const words = this.context.wrap([t, FileStore.trailer(files)].filter(Boolean).join("\n\n"), c.context);
     const sent: Said = images.length
       ? [
           ...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.type as MediaType, data: i.data } })),
@@ -736,9 +749,9 @@ export class ChatHost {
         ]
       : words;
     c.context = undefined;
-    if (!c.title) this.titleFrom(c, t || (images.length === 1 ? "An image" : `${images.length} images`));
+    if (!c.title) this.titleFrom(c, t || (images.length === 1 ? "An image" : images.length ? `${images.length} images` : files.length === 1 ? files[0].name : `${files.length} files`));
     this.save();
-    this.push(c, { kind: "you", id: this.nextId(), text: t, images: images.length ? images.map((i) => i.image) : undefined });
+    this.push(c, { kind: "you", id: this.nextId(), text: t, images: images.length ? images.map((i) => i.image) : undefined, files: files.length ? files : undefined });
     this.set(c, { status: "working", error: undefined });
     if (c.session) c.session.inbox.push(sent);
     else {

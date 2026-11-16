@@ -10,7 +10,7 @@ const PATH = /^[A-Za-z]:[\\/][^\s:*?"<>|]+(?::(\d+))?$/;
 const BARE = /^([A-Za-z]:[\\/][^\s`*?"<>|()[\]]*?)([.,;:!?]*)$/;
 
 /** A path in a reply as a button: a click opens it in the app's editor (ui.openPath, at its line); Ctrl+click, Cmd+click or a middle click shows it where files live (ui.openFolder). */
-function PathButton({ text, file, line, ui }: { text: string; file: string; line?: number; ui: ClaudeUi }) {
+export function PathButton({ text, file, line, ui }: { text: string; file: string; line?: number; ui: ClaudeUi }) {
   const toFolder = (e: { ctrlKey: boolean; metaKey: boolean; button?: number }) => !!ui.openFolder && (e.ctrlKey || e.metaKey || e.button === 1);
   const title = ui.openPath && ui.openFolder ? "Open (Ctrl+click: show in Explorer)" : ui.openFolder ? "Show in Explorer" : "Open";
   return (

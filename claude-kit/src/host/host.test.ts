@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -203,6 +203,29 @@ describe("httpHandler", () => {
     } finally {
       server.close();
       done();
+    }
+  });
+
+  it("files go with a message: by path, or uploaded and kept; listed to Claude after the words, chips on the row", async () => {
+    const { host, queries, done } = setup();
+    const dir = mkdtempSync(join(tmpdir(), "claude-kit-files-"));
+    try {
+      const notes = join(dir, "notes.txt");
+      writeFileSync(notes, "hello");
+      await host.send("read this", undefined, undefined, [{ path: notes }, { data: Buffer.from("x,y\n1,2").toString("base64"), name: "sheet.csv" }, { path: dir }]);
+      await tick();
+      const content = queries[0].got[0].message.content;
+      const text = typeof content === "string" ? content : String(content.find((b) => b.type === "text")?.text);
+      assert.match(text, /^read this\n\nAttached files \(on this machine; read them with your tools as needed\):\n- .*notes\.txt \(5 bytes\)\n- .*[\\/][a-f0-9]{12}-sheet\.csv \(7 bytes\)\n- .* \(a folder\)$/);
+      const row = host.state().chats[0].items.find((i) => i.kind === "you");
+      assert.ok(row && row.kind === "you" && row.files?.length === 3);
+      assert.equal(row.files[0].name, "notes.txt");
+      assert.equal(row.files[1].name, "sheet.csv");
+      assert.equal(row.files[2].size, undefined);
+      await assert.rejects(host.send("", undefined, undefined, [{ path: join(dir, "missing.pdf") }]), /isn't there/);
+    } finally {
+      done();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

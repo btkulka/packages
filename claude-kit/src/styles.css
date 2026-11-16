@@ -320,6 +320,15 @@
 .ck-pending { position: relative; width: 56px; height: 56px; border-radius: 12px; overflow: hidden; background: var(--ck-surface-3); box-shadow: inset 0 0 0 1px var(--ck-stroke-strong); }
 .ck-pending img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ck-unpend { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.72); color: #fff; }
+/* A file waiting to go with the message: its name and size, an × to take it off. */
+.ck-pendfile { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 240px; height: 32px; padding: 0 28px 0 10px; border-radius: 12px; background: var(--ck-surface-3); box-shadow: inset 0 0 0 1px var(--ck-stroke-strong); font: 500 12px/16px var(--ck-font); color: var(--ck-ink); }
+.ck-pendfile .ck-unpend { top: 7px; }
+.ck-fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-fsize { color: var(--ck-ink-3); flex: none; }
+/* The files on a message that was sent: chips that open them (a click: the app's editor; Ctrl+click: where files live). */
+.ck-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.ck-files .ck-path { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; background: var(--ck-surface-3); font: 500 12px/16px var(--ck-font); text-decoration: none; }
+.ck-files .ck-path:hover { box-shadow: inset 0 0 0 1px var(--ck-accent); }
 .ck-root .ck-unpend { background: rgba(0, 0, 0, 0.72); color: #fff; }
 .ck-drop { position: absolute; inset: 8px; z-index: 2; border-radius: 20px; border: 2px dashed var(--ck-accent); background: var(--ck-drop-bg); display: grid; place-items: center; pointer-events: none; font: 600 15px/20px var(--ck-font); color: var(--ck-ink); }
 

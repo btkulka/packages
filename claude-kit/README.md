@@ -120,6 +120,8 @@ For React on the server-app side, use `httpTransport("/claude")` as the transpor
 
 - `components`: the app's own `Button`, `Tooltip`, `Menu`, `SegmentedControl` and `SearchField`, with the built-ins' props
 - `toast`, `openLink`, `openPath` (paths in replies become buttons), `openFolder` (Ctrl+click, Cmd+click or a middle click on a path shows it where files live; given this, bare `D:\…` paths in a reply are buttons too), `copy`
+
+Files go with a message as images do: dropped, pasted or picked (the paperclip takes any kind). Images go to Claude as pictures; other files are listed on the message by path, and Claude reads them with its tools (PDFs, documents, code, folders). In Electron, pass `pathFor: (f) => webUtils.getPathForFile(f)` to `claudeBridge` so a dropped file goes by its path; in a browser (the phone) the bytes are uploaded and the host keeps them under `dataDir/chat-files` (50 MB each at most). `send(text, chat, images, files)` takes `{ path }` or `{ data, name, type }`.
 - `phone`: a touch screen
 - `signIn`: the chat offers Sign in when Claude Code is signed out
 - `setMode` and `setModel`: route a pick somewhere else, like the app's settings

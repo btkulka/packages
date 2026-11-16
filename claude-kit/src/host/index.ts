@@ -4,6 +4,7 @@
 
 export { ChatHost, type ChatHostOptions, type ChatNotice } from "./host.js";
 export { ImageStore, SENDABLE, MAX_SEND_BYTES, type ImageBytes, type ImageTools } from "./images.js";
+export { FileStore, MAX_UPLOAD_BYTES, sizeWord } from "./files.js";
 export { transcriptTail, transcriptPath, type TranscriptEntry } from "./transcript.js";
 export { openTerminal } from "./terminal.js";
 export { contextWrapper, detailOf, firstLine, rowMaker, MAX_ITEMS } from "./items.js";
