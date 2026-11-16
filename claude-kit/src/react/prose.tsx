@@ -6,23 +6,47 @@ import { mdSrc, Thumb } from "./images.js";
 // headings, lists, tables, paragraphs, inline code, bold, links and images.
 
 const PATH = /^[A-Za-z]:[\\/][^\s:*?"<>|]+(?::(\d+))?$/;
+/** A bare path in prose (D:\x\y or D:/x/y.ts), its trailing sentence punctuation left out. */
+const BARE = /^([A-Za-z]:[\\/][^\s`*?"<>|()[\]]*?)([.,;:!?]*)$/;
 
-/** Inline code, bold, links, images (![what](a path or address)); a path in code opens through the app (ui.openPath, at its line) when it gives a way to. */
+/** A path in a reply as a button: a click opens it in the app's editor (ui.openPath, at its line); Ctrl+click, Cmd+click or a middle click shows it where files live (ui.openFolder). */
+function PathButton({ text, file, line, ui }: { text: string; file: string; line?: number; ui: ClaudeUi }) {
+  const toFolder = (e: { ctrlKey: boolean; metaKey: boolean; button?: number }) => !!ui.openFolder && (e.ctrlKey || e.metaKey || e.button === 1);
+  const title = ui.openPath && ui.openFolder ? "Open (Ctrl+click: show in Explorer)" : ui.openFolder ? "Show in Explorer" : "Open";
+  return (
+    <button
+      type="button"
+      className="ck-path"
+      title={title}
+      onClick={(e) => (toFolder(e) || !ui.openPath ? ui.openFolder?.(file) : ui.openPath(file, line))}
+      onAuxClick={(e) => e.button === 1 && (e.preventDefault(), ui.openFolder?.(file))}
+    >
+      {text}
+    </button>
+  );
+}
+
+/** Inline code, bold, links, images (![what](a path or address)); a path in code, or bare in the text, opens through the app (ui.openPath at its line; ui.openFolder on Ctrl+click) when it gives a way to. */
 function inline(text: string, ui: ClaudeUi): ReactNode[] {
-  return text.split(/(!\[[^\]\n]*\]\([^)\n]+\)|`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\([^)\s]+\)|https?:\/\/[^\s)>\]]+)/g).map((t, i) => {
+  const paths = (ui.openPath || ui.openFolder) && !ui.phone;
+  return text.split(/(!\[[^\]\n]*\]\([^)\n]+\)|`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\([^)\s]+\)|https?:\/\/[^\s)>\]]+|(?<![\w\\/])[A-Za-z]:[\\/][^\s`*?"<>|()[\]]+)/g).map((t, i) => {
     const img = /^!\[([^\]\n]*)\]\(([^)\n]+)\)$/.exec(t);
     if (img) return <Thumb key={i} pic={{ ref: mdSrc(img[2]), alt: img[1] || undefined }} size="lg" />;
     if (t.startsWith("`") && t.endsWith("`") && t.length > 2) {
       const code = t.slice(1, -1);
-      const p = ui.openPath && !ui.phone ? PATH.exec(code) : null;
+      const p = paths ? PATH.exec(code) : null;
       if (!p) return <code key={i}>{code}</code>;
       const file = p[1] ? code.slice(0, code.lastIndexOf(":")) : code;
-      return (
-        <button key={i} type="button" className="ck-path" title="Open" onClick={() => ui.openPath?.(file, p[1] ? Number(p[1]) : undefined)}>
-          {code}
-        </button>
-      );
+      return <PathButton key={i} text={code} file={file} line={p[1] ? Number(p[1]) : undefined} ui={ui} />;
     }
+    const bare = paths ? BARE.exec(t) : null;
+    if (bare && bare[1].length > 3)
+      return (
+        <span key={i}>
+          <PathButton text={bare[1]} file={bare[1]} ui={ui} />
+          {bare[2]}
+        </span>
+      );
     if (t.startsWith("**") && t.endsWith("**") && t.length > 4) return <strong key={i}>{t.slice(2, -2)}</strong>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(t);
     const href = link ? link[2] : /^https?:\/\//.test(t) ? t : undefined;

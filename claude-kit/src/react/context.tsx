@@ -20,6 +20,8 @@ export interface ClaudeUi {
   openLink(href: string): void;
   /** A file path in a reply's code (D:\x\y.ts:12): given this, the path is a button that calls it. */
   openPath?(file: string, line?: number): void;
+  /** A path in a reply, Ctrl-clicked (or middle-clicked): show it where files live (Explorer, Finder). Given this, bare paths in a reply are buttons too. */
+  openFolder?(path: string): void;
   copy(text: string): Promise<void>;
   /** A touch screen: Enter is a new line, the mode is one chip, nothing grabs focus. */
   phone: boolean;

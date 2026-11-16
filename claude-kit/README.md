@@ -119,7 +119,7 @@ For React on the server-app side, use `httpTransport("/claude")` as the transpor
 `ui` takes these overrides, all optional:
 
 - `components`: the app's own `Button`, `Tooltip`, `Menu`, `SegmentedControl` and `SearchField`, with the built-ins' props
-- `toast`, `openLink`, `openPath` (paths in replies become buttons), `copy`
+- `toast`, `openLink`, `openPath` (paths in replies become buttons), `openFolder` (Ctrl+click, Cmd+click or a middle click on a path shows it where files live; given this, bare `D:\…` paths in a reply are buttons too), `copy`
 - `phone`: a touch screen
 - `signIn`: the chat offers Sign in when Claude Code is signed out
 - `setMode` and `setModel`: route a pick somewhere else, like the app's settings
