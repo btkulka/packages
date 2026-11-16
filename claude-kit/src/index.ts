@@ -18,6 +18,8 @@ export type {
   ClaudeMode,
   ClaudeTransport,
   ImageBytesOut,
+  ChatFile,
+  NewChatFile,
   NewChatImage,
   NewChatOptions,
   PastChat,
