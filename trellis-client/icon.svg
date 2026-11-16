@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>trellis-client: image to 3D</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9b48a" stop-opacity="0.30"/><stop offset="1" stop-color="#8c7a52" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <!-- a flat picture becoming a solid: a square card, then an isometric cube grown from it -->
+    <rect x="44" y="72" width="64" height="64" rx="6" fill="none" stroke="#9a8a66" stroke-width="6" opacity="0.7"/>
+    <path d="M128 104 l-8 0" stroke="#9a8a66" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+    <g stroke="#e6cf9a" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" fill="none">
+      <path d="M168 60 l48 28 l0 56 l-48 28 l-48 -28 l0 -56 z"/>
+      <path d="M168 60 l0 56 l48 -28"/>
+      <path d="M168 116 l-48 -28"/>
+      <path d="M168 116 l0 56"/>
+    </g>
+    <path d="M168 88 l24 14 l0 28 l-24 14 l-24 -14 l0 -28 z" fill="#e6cf9a" opacity="0.18"/>
+  </g>
+</svg>

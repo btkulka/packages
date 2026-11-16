@@ -6,6 +6,7 @@ The home for Ben's shared packages: code more than one app uses, kept in one pla
 |---|---|---|
 | [`comfy-client`](comfy-client) (`@datrapscallion/comfy-client`) | ComfyUI client: queue, workflows, ControlNet conditioning, cutouts | orson, starfall |
 | [`lora-train`](lora-train) | Image/style LoRA training engine | orson, nhi-album-art-gen |
+| [`trellis-client`](trellis-client) (`@btkulka/trellis-client`) | TRELLIS.2 image-to-3D through a dedicated ComfyUI: the weights, the server guarded for a small machine (one at a time, a free-memory floor, half the cores, low priority), one model from an image or a text prompt (ComfyUI's own template turned into an API prompt) to a vertex-painted GLB, and the GLB read into OBJ files split by colour for TouchDesigner, Blender or a game; `btkulka-trellis` from a terminal | notion-tome-adventures, (toejam, next) |
 | [`lore-core`](lore-core) (`@datrapscallion/lore-core`) | LanceDB knowledge store for game lore | orson |
 | [`mcp-kit`](mcp-kit) | MCP server plumbing: results, stdio and HTTP serving, parent watchdog, stdio↔HTTP bridge; one SDK and zod for every app | (migrating) |
 | [`sqlite-store`](sqlite-store) | SQLite open with pragmas, migrations, transactions, JSON and settings helpers, for better-sqlite3 or node:sqlite passed in by the app | (migrating) |

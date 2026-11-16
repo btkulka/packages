@@ -1,0 +1,48 @@
+{
+  "name": "@btkulka/trellis-client",
+  "version": "0.1.0",
+  "description": "TRELLIS.2 image-to-3D through a dedicated ComfyUI: check and download the weights, start the server guarded for a small machine (one at a time, free-memory floor, half the cores, low priority), turn ComfyUI's own template into an API prompt and run it (an image, or a text prompt drawn as a concept image first) to a vertex-painted GLB, and read a GLB into OBJ files split by colour for TouchDesigner, Blender or a game. Paths and URLs come from the app. Node only; ESM and CommonJS.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "trellis-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "bin": {
+    "btkulka-trellis": "./dist/esm/cli.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/proc-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
