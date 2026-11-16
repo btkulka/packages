@@ -18,6 +18,10 @@ export interface TrellisEnv {
   sharedModelsDir?: string;
   /** Where the lock and PID files live (default the OS temp dir). */
   runDir?: string;
+  /** Sent with every request to the server (a rented GPU's token: { Authorization: "Bearer …" }). */
+  headers?: Record<string, string>;
+  /** The server is on another machine: results come back over HTTP (/view), not from comfyDir's output folder. */
+  remote?: boolean;
 }
 
 export interface ResolvedEnv {

@@ -25,3 +25,8 @@ export type { GenerateOptions, GenerateResult, ConceptModel, ProgressFn } from "
 
 export { parseGlb, splitByColor, writeObj, glbToObj, meshStats, srgbToOklab, oklabToSrgb } from "./glb.js";
 export type { GlbMesh, ColorGroup, ObjFiles, GlbToObjOptions } from "./glb.js";
+
+export { rentPlan, rentAndGenerate, bootScript, BOOT_CMD, COMFY_REV, RENT_IMAGE, RENT_TORCH, RENT_PORT, PROXY_PY } from "./rent.js";
+export type { RentJob, RentOptions, RentResult } from "./rent.js";
+export { savedFiles } from "./generate.js";
+export type { SavedFile } from "./generate.js";

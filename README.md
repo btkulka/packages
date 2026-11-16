@@ -6,6 +6,7 @@ The home for Ben's shared packages: code more than one app uses, kept in one pla
 |---|---|---|
 | [`comfy-client`](comfy-client) (`@datrapscallion/comfy-client`) | ComfyUI client: queue, workflows, ControlNet conditioning, cutouts | orson, starfall |
 | [`lora-train`](lora-train) | Image/style LoRA training engine | orson, nhi-album-art-gen |
+| [`runpod-client`](runpod-client) (`@btkulka/runpod-client`) | Rent a GPU by the minute on RunPod: the REST API v2 (GPU catalog with prices; pods: create, logs, run a command, terminate) and a guarded rental (a plan and worst-case cost before spending, a budget, a hard deadline kept by a detached watchdog, a sweep for strays) and Benhäus credential adapter (`runpod/shared`); `btkulka-runpod` to look and clean up | trellis-client |
 | [`trellis-client`](trellis-client) (`@btkulka/trellis-client`) | TRELLIS.2 image-to-3D through a dedicated ComfyUI: the weights, the server guarded for a small machine (one at a time, a free-memory floor, half the cores, low priority), one model from an image or a text prompt (ComfyUI's own template turned into an API prompt) to a vertex-painted GLB, and the GLB read into OBJ files split by colour for TouchDesigner, Blender or a game; `btkulka-trellis` from a terminal | notion-tome-adventures, (toejam, next) |
 | [`lore-core`](lore-core) (`@datrapscallion/lore-core`) | LanceDB knowledge store for game lore | orson |
 | [`mcp-kit`](mcp-kit) | MCP server plumbing: results, stdio and HTTP serving, parent watchdog, stdio↔HTTP bridge; one SDK and zod for every app | (migrating) |

@@ -1,0 +1,85 @@
+{
+  "name": "@btkulka/runpod-client",
+  "version": "0.1.0",
+  "description": "Rent a GPU by the minute on RunPod for Ben's apps: the REST API v2 (the GPU catalog with prices, pods: create, read, logs, run a command, stop, terminate), and a guarded rental on top: pick the cheapest GPU with enough memory, a cost estimate before anything is spent, a budget cap, a hard deadline enforced by a detached watchdog that terminates the pod even if the caller dies, a sweep for strays, and the pod's HTTPS proxy address. The key from Benhäus Credentials (env RUNPOD_API_KEY as the fallback). btkulka-runpod from a terminal. Node only; ESM and CommonJS.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "runpod-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "benhaus": {
+    "credential": {
+      "label": "RunPod (rented GPUs)",
+      "docs": "https://www.runpod.io/console/user/settings",
+      "fields": [
+        {
+          "name": "apiKey",
+          "label": "API key",
+          "secret": true,
+          "env": "RUNPOD_API_KEY",
+          "placeholder": "rpa_..."
+        }
+      ],
+      "test": {
+        "method": "GET",
+        "url": "https://api.runpod.io/v2/account",
+        "headers": {
+          "Authorization": "Bearer {apiKey}"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "status": 401,
+            "message": "RunPod doesn't know this key. Make one in RunPod › Settings › API Keys (read and write, so it can start and stop pods) and paste it again."
+          },
+          {
+            "status": 403,
+            "message": "The key can't read the account: give it read and write access to pods in RunPod › Settings › API Keys."
+          }
+        ]
+      }
+    }
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "bin": {
+    "btkulka-runpod": "./dist/esm/cli.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/benhaus-client": "^0.1.0",
+    "@btkulka/http-kit": "^0.1.0",
+    "@btkulka/proc-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}

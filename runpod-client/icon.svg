@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>runpod-client: rented GPUs</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9b48a" stop-opacity="0.30"/><stop offset="1" stop-color="#8c7a52" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <!-- a graphics card with a clock: a GPU by the minute -->
+    <rect x="40" y="92" width="132" height="76" rx="10" fill="none" stroke="#e6cf9a" stroke-width="7"/>
+    <circle cx="92" cy="130" r="22" fill="none" stroke="#e6cf9a" stroke-width="6"/>
+    <path d="M52 168 v14 M70 168 v14 M88 168 v14 M106 168 v14 M124 168 v14" stroke="#9a8a66" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="184" cy="86" r="34" fill="#0b0b0d" stroke="#e6cf9a" stroke-width="7"/>
+    <path d="M184 66 v20 l14 10" stroke="#e6cf9a" stroke-width="6" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

@@ -101,6 +101,32 @@ btkulka-trellis generate (--image FILE | --prompt TEXT) --name NAME [--out DIR] 
 btkulka-trellis obj IN.glb OUT_PREFIX [--colors N] [--scale S]
 ```
 
+## Renting a GPU (for what 8 GB can't hold)
+
+Boxy, closed objects need more than an 8 GB card has (see below). `rent` does the same run on a GPU rented by the minute on RunPod, through `@btkulka/runpod-client`:
+
+```
+btkulka-trellis rent --image drawer.png --image counter.png --out models/trellis            # the plan and its price; rents nothing
+btkulka-trellis rent --image drawer.png --image counter.png --out models/trellis --yes      # rents, models, terminates
+```
+
+1. **The plan** (spends nothing): the GPUs with at least 40 GB (`--min-memory`) on hosts with CUDA 13 (the torch below needs it), cheapest first, Community Cloud then Secure, and the worst case: the dearest candidate's rate over the deadline (15 min + 5 a model, at least 30; `--minutes`). Over the budget (`--budget`, default $2) it won't rent. In Nov 2026 a 48 GB A40 was about $0.35 an hour, so four models cost about $0.20.
+2. **The pod** (`--yes`): `runpod/pytorch` with the same ComfyUI commit the local install runs (`COMFY_REV`), torch 2.14.1 for CUDA 13, the TRELLIS.2 weights from Hugging Face, ComfyUI on the pod's localhost and a small token proxy (`PROXY_PY`) on its port 8188: RunPod's HTTPS proxy has no authentication, so every request carries a random per-rental token. Setup takes about 10 minutes (the boot script's steps show as it goes); then each model takes a minute or two on a 48 GB card.
+3. **The models**: `generate()` against the pod (`remote: true`: the GLB comes back over ComfyUI's `/view`), into `--out` as usual. A model that fails is reported and the rest go on.
+4. **The end**: the pod is terminated when the models are done, on an error, on Ctrl+C, and at the deadline at the latest, twice over: a detached watchdog on this PC and the pod's own timer. `btkulka-runpod pods` shows anything still running; `btkulka-runpod sweep` ends strays.
+
+The key: Benhäus › Settings › Credentials › RunPod (`runpod/shared`), or `RUNPOD_API_KEY`. Only image input works on a rented GPU (the concept-image checkpoint isn't downloaded there).
+
+```ts
+const plan = await rentPlan({ apiKey, jobs: [{ image: "drawer.png", name: "drawer" }], outDir: "models/trellis" });
+if (plan.ok && (await ask(`at most $${plan.maxCostUsd}?`))) {
+  const r = await rentAndGenerate({ apiKey, jobs, outDir: "models/trellis", onLog: console.log });
+  // r.results (GenerateResult[]), r.failures, r.spentUsd, r.minutes, r.gpu
+}
+```
+
+`TrellisEnv` takes `headers` (sent with every request) and `remote` (results over HTTP) for any ComfyUI on another machine, rented or not.
+
 ## What the first runs taught (tome adventures, Nov 12 2026)
 
 - Timings on this machine: the SDXL Turbo concept about 25 s, the TRELLIS run about 3 minutes (250k triangles, 7.5 MB GLB). Free RAM dipped to about 1.6 GB during sampling with the desktop apps closed.

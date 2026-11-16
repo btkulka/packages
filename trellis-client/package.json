@@ -1,7 +1,7 @@
 {
   "name": "@btkulka/trellis-client",
   "version": "0.1.0",
-  "description": "TRELLIS.2 image-to-3D through a dedicated ComfyUI: check and download the weights, start the server guarded for a small machine (one at a time, free-memory floor, half the cores, low priority), turn ComfyUI's own template into an API prompt and run it (an image, or a text prompt drawn as a concept image first) to a vertex-painted GLB, and read a GLB into OBJ files split by colour for TouchDesigner, Blender or a game. Paths and URLs come from the app. Node only; ESM and CommonJS.",
+  "description": "TRELLIS.2 image-to-3D through a dedicated ComfyUI: check and download the weights, start the server guarded for a small machine (one at a time, free-memory floor, half the cores, low priority), turn ComfyUI's own template into an API prompt and run it (an image, or a text prompt drawn as a concept image first) to a vertex-painted GLB, and read a GLB into OBJ files split by colour for TouchDesigner, Blender or a game. Rents a bigger GPU on RunPod for what an 8 GB card cannot hold (rent: plan and price first, a budget, terminated when done). Paths and URLs come from the app. Node only; ESM and CommonJS.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/btkulka/packages.git",
@@ -39,7 +39,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@btkulka/proc-kit": "^0.1.0"
+    "@btkulka/proc-kit": "^0.1.0",
+    "@btkulka/runpod-client": "^0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

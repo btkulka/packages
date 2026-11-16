@@ -62,27 +62,75 @@ export interface GenerateResult {
   secs: number;
 }
 
-interface History {
-  status?: { completed?: boolean; status_str?: string; messages?: [string, { node_type?: string; exception_message?: string }][] };
+/** A file a node saved, as ComfyUI's history reports it. */
+export interface SavedFile {
+  filename: string;
+  subfolder: string;
+  type: string;
 }
 
-async function api(url: string, route: string, init?: RequestInit): Promise<unknown> {
-  const res = await fetch(url + route, init);
-  if (!res.ok) throw new TrellisError("failed", `${route}: ${res.status} ${await res.text()}`);
+interface History {
+  status?: { completed?: boolean; status_str?: string; messages?: [string, { node_type?: string; exception_message?: string }][] };
+  outputs?: Record<string, Record<string, unknown>>;
+}
+
+/** Where the server is and what every request carries (a rented GPU's token). */
+interface Conn {
+  url: string;
+  headers: Record<string, string>;
+}
+
+async function api(c: Conn, route: string, init: RequestInit = {}): Promise<unknown> {
+  const res = await fetch(c.url + route, { ...init, headers: { ...c.headers, ...((init.headers as Record<string, string> | undefined) ?? {}) } });
+  if (!res.ok) throw new TrellisError("failed", `${route}: ${res.status} ${(await res.text()).slice(0, 500)}`);
   return res.headers.get("content-type")?.includes("json") ? res.json() : res.text();
 }
 
-async function upload(url: string, file: string, name: string): Promise<string> {
+async function upload(c: Conn, file: string, name: string): Promise<string> {
   const form = new FormData();
   form.append("image", new Blob([fs.readFileSync(file)]), name);
   form.append("overwrite", "true");
-  return ((await api(url, "/upload/image", { method: "POST", body: form })) as { name: string }).name;
+  return ((await api(c, "/upload/image", { method: "POST", body: form })) as { name: string }).name;
 }
 
-/** Queue a prompt and wait for it. */
-async function run(url: string, prompt: ApiPrompt, label: "concept" | "trellis", onProgress?: ProgressFn, pollS = 3): Promise<void> {
+/** Every file a finished prompt's nodes saved, from its history entry, with one of these extensions. */
+export function savedFiles(outputs: Record<string, Record<string, unknown>> | undefined, exts: string[]): SavedFile[] {
+  const out: SavedFile[] = [];
+  for (const node of Object.values(outputs ?? {}))
+    for (const list of Object.values(node ?? {}))
+      if (Array.isArray(list))
+        for (const f of list as Partial<SavedFile>[])
+          if (f && typeof f.filename === "string" && exts.some((x) => (f.filename as string).toLowerCase().endsWith(x))) out.push({ filename: f.filename, subfolder: f.subfolder ?? "", type: f.type ?? "output" });
+  return out;
+}
+
+/** A saved file's bytes over HTTP (ComfyUI's /view), written to dest. */
+async function download(c: Conn, f: SavedFile, dest: string): Promise<void> {
+  const q = new URLSearchParams({ filename: f.filename, subfolder: f.subfolder, type: f.type });
+  const res = await fetch(`${c.url}/view?${q}`, { headers: c.headers });
+  if (!res.ok) throw new TrellisError("no-output", `/view ${f.filename}: ${res.status}`);
+  fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+}
+
+/** A finished prompt's file into dest: from the local output folder when the server is here, else over HTTP. */
+async function fetchResult(c: Conn, comfyDir: string, remote: boolean, outputs: History["outputs"], stem: string, exts: string[], dest: string): Promise<boolean> {
+  const local = !remote && comfyDir ? newestOutput(comfyDir, stem, exts) : undefined;
+  if (local) {
+    fs.copyFileSync(local, dest);
+    return true;
+  }
+  const leaf = stem.split("/").pop() ?? stem;
+  const files = savedFiles(outputs, exts);
+  const f = files.find((x) => x.filename.includes(leaf)) ?? files[0];
+  if (!f) return false;
+  await download(c, f, dest);
+  return true;
+}
+
+/** Queue a prompt and wait for it. Returns what its nodes saved. */
+async function run(c: Conn, prompt: ApiPrompt, label: "concept" | "trellis", onProgress?: ProgressFn, pollS = 3): Promise<History["outputs"]> {
   const client = crypto.randomUUID();
-  const queued = (await api(url, "/prompt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt, client_id: client }) })) as {
+  const queued = (await api(c, "/prompt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt, client_id: client }) })) as {
     prompt_id: string;
     node_errors?: Record<string, unknown>;
   };
@@ -91,8 +139,8 @@ async function run(url: string, prompt: ApiPrompt, label: "concept" | "trellis",
   let last = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, pollS * 1000));
-    const hist = ((await api(url, `/history/${queued.prompt_id}`)) as Record<string, History>)[queued.prompt_id];
-    if (hist?.status?.completed) return;
+    const hist = ((await api(c, `/history/${queued.prompt_id}`)) as Record<string, History>)[queued.prompt_id];
+    if (hist?.status?.completed) return hist.outputs;
     if (hist?.status?.status_str === "error") {
       const err = hist.status.messages?.find((m) => m[0] === "execution_error")?.[1];
       throw new TrellisError("failed", `${label} failed in ${err?.node_type ?? "?"}: ${err?.exception_message ?? JSON.stringify(hist.status).slice(0, 800)}`);
@@ -108,6 +156,7 @@ async function run(url: string, prompt: ApiPrompt, label: "concept" | "trellis",
 /** The newest file under ComfyUI's output folder whose path contains `stem`. */
 function newestOutput(comfyDir: string, stem: string, exts: string[]): string | undefined {
   const root = path.join(comfyDir, "output");
+  if (!fs.existsSync(root)) return undefined;
   const found: [number, string][] = [];
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -120,11 +169,11 @@ function newestOutput(comfyDir: string, stem: string, exts: string[]): string | 
   return found.sort((a, b) => b[0] - a[0])[0]?.[1];
 }
 
-async function loadTemplate(url: string, template: string | UiWorkflow | undefined): Promise<UiWorkflow> {
+async function loadTemplate(c: Conn, template: string | UiWorkflow | undefined): Promise<UiWorkflow> {
   if (template && typeof template !== "string") return template;
   const name = template ?? TRELLIS_TEMPLATE;
   try {
-    return (await api(url, `/templates/${name}.json`)) as UiWorkflow;
+    return (await api(c, `/templates/${name}.json`)) as UiWorkflow;
   } catch {
     const res = await fetch(`https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/${name}.json`);
     if (!res.ok) throw new TrellisError("no-template", `No ${name} template from the server or GitHub`);
@@ -142,9 +191,11 @@ export async function generate(env: TrellisEnv, o: GenerateOptions): Promise<Gen
   if (!o.image && !o.prompt) throw new TrellisError("bad-prompt", "pass an image or a prompt");
   const r = resolveEnv(env);
   const url = r.url;
+  const c: Conn = { url, headers: env.headers ?? {} };
+  const remote = !!env.remote;
   let info: ObjectInfo;
   try {
-    info = (await api(url, "/object_info")) as ObjectInfo;
+    info = (await api(c, "/object_info")) as ObjectInfo;
   } catch (err) {
     throw new TrellisError("not-up", `No 3D ComfyUI at ${url}: ${(err as Error).message}`);
   }
@@ -164,17 +215,15 @@ export async function generate(env: TrellisEnv, o: GenerateOptions): Promise<Gen
       throw new TrellisError("no-checkpoint", (err as Error).message);
     }
     const prefix = `trellis/${o.name}-concept`;
-    await run(url, buildConceptPrompt({ subject: o.prompt as string, ckpt, ...m, seed, prefix, style: o.conceptStyle, negative: o.conceptNegative }), "concept", o.onProgress, o.pollS);
-    const made = newestOutput(r.comfyDir, prefix, [".png"]);
-    if (!made) throw new TrellisError("no-output", "SDXL finished but its image is missing");
+    const saved = await run(c, buildConceptPrompt({ subject: o.prompt as string, ckpt, ...m, seed, prefix, style: o.conceptStyle, negative: o.conceptNegative }), "concept", o.onProgress, o.pollS);
     concept = path.join(o.outDir, `${o.name}-concept.png`);
-    fs.copyFileSync(made, concept);
+    if (!(await fetchResult(c, r.comfyDir, remote, saved, prefix, [".png"], concept))) throw new TrellisError("no-output", "SDXL finished but its image is missing");
     image = concept;
   }
 
-  const imageName = await upload(url, image, `${o.name}-${path.basename(image)}`);
+  const imageName = await upload(c, image, `${o.name}-${path.basename(image)}`);
   const savePrefix = `3d/trellis/${o.name}`;
-  const prompt = buildTrellisPrompt(await loadTemplate(url, o.template), info, {
+  const prompt = buildTrellisPrompt(await loadTemplate(c, o.template), info, {
     imageName,
     seed,
     resolution: o.resolution ?? (high ? 1536 : 1024),
@@ -183,11 +232,9 @@ export async function generate(env: TrellisEnv, o: GenerateOptions): Promise<Gen
   });
   fs.writeFileSync(path.join(o.outDir, `${o.name}-prompt.json`), JSON.stringify(prompt, null, 1));
   const t = Date.now();
-  await run(url, prompt, "trellis", o.onProgress, o.pollS);
-  const made = newestOutput(r.comfyDir, savePrefix, [".glb"]);
-  if (!made) throw new TrellisError("no-output", "TRELLIS finished but no GLB was saved");
+  const savedGlb = await run(c, prompt, "trellis", o.onProgress, o.pollS);
   const glb = path.join(o.outDir, `${o.name}.glb`);
-  fs.copyFileSync(made, glb);
+  if (!(await fetchResult(c, r.comfyDir, remote, savedGlb, savePrefix, [".glb"], glb))) throw new TrellisError("no-output", "TRELLIS finished but no GLB was saved");
   const secs = Math.round((Date.now() - t) / 1000);
   const meta = path.join(o.outDir, `${o.name}.meta.json`);
   fs.writeFileSync(

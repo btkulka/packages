@@ -7,12 +7,17 @@
 //   btkulka-trellis stop     [--comfy …] [--url …]
 //   btkulka-trellis generate (--image ref.png | --prompt "a thing") --name my-thing [--out dir] [--quality high] [--seed n] [--style "…"]
 //   btkulka-trellis obj      in.glb out/prefix [--colors 6] [--scale 1]
+//   btkulka-trellis rent     --image a.png [--name a] [--image b.png --name b …] [--out dir] [--min-memory 40] [--minutes N] [--budget 2] [--yes]
+//                            (a rented GPU on RunPod for what an 8 GB card can't hold; the plan and price print first, --yes spends)
 //
 // TRELLIS_COMFY_DIR and TRELLIS_URL set the defaults.
 import path from "node:path";
 import { parseArgs } from "node:util";
 
+import { DEFAULT_CREDENTIAL as RUNPOD_CREDENTIAL, KEY_ENV as RUNPOD_KEY_ENV, loadRunPodKey } from "@btkulka/runpod-client";
+
 import { generate } from "./generate.js";
+import { rentAndGenerate, rentPlan, type RentJob } from "./rent.js";
 import { glbToObj } from "./glb.js";
 import { TrellisError, isUp, serve, stopServer, watchMemoryFloor } from "./server.js";
 import type { TrellisEnv } from "./server.js";
@@ -23,7 +28,10 @@ const USAGE = `btkulka-trellis check|fetch|serve|stop|generate|obj
   serve [--comfy DIR] [--url URL] [--shared-models DIR] [--force]      (foreground; Ctrl+C stops it)
   stop [--comfy DIR] [--url URL]
   generate (--image FILE | --prompt TEXT) --name NAME [--out DIR] [--quality high] [--seed N] [--resolution N] [--style TEXT]
-  obj IN.glb OUT_PREFIX [--colors N] [--scale S]`;
+  obj IN.glb OUT_PREFIX [--colors N] [--scale S]
+  rent --image FILE [--name NAME] [--image FILE --name NAME …] [--out DIR] [--min-memory GB] [--minutes N] [--budget USD] [--yes]
+       a GPU rented on RunPod by the minute: the plan and its worst-case cost print first; only --yes rents.
+       The key: Benhäus credential ${RUNPOD_CREDENTIAL} (or env ${RUNPOD_KEY_ENV}).`;
 
 function main(): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -34,9 +42,13 @@ function main(): Promise<number> {
       url: { type: "string" },
       "shared-models": { type: "string" },
       force: { type: "boolean" },
-      image: { type: "string" },
+      image: { type: "string", multiple: true },
       prompt: { type: "string" },
-      name: { type: "string" },
+      name: { type: "string", multiple: true },
+      "min-memory": { type: "string" },
+      minutes: { type: "string" },
+      budget: { type: "string" },
+      yes: { type: "boolean", short: "y" },
       out: { type: "string" },
       quality: { type: "string" },
       seed: { type: "string" },
@@ -85,7 +97,9 @@ function main(): Promise<number> {
         console.log((await stopServer(env)) ? "Stopped." : "Nothing of ours was running.");
         return 0;
       case "generate": {
-        if (!values.name || (!values.image && !values.prompt)) {
+        const image = values.image?.[0];
+        const name = values.name?.[0];
+        if (!name || (!image && !values.prompt)) {
           console.error(USAGE);
           return 2;
         }
@@ -94,9 +108,9 @@ function main(): Promise<number> {
           return 1;
         }
         const r = await generate(env, {
-          image: values.image,
+          image,
           prompt: values.prompt,
-          name: values.name,
+          name,
           outDir: values.out ?? path.resolve("trellis-out"),
           quality: values.quality === "high" ? "high" : "standard",
           seed: values.seed ? Number(values.seed) : undefined,
@@ -119,6 +133,58 @@ function main(): Promise<number> {
         for (const [k, f] of out.files.entries()) console.log(`${out.groups[k].hex}  ${out.groups[k].faces} faces  ${f}`);
         console.log(`manifest ${out.manifest}`);
         return 0;
+      }
+      case "rent": {
+        const images = values.image ?? [];
+        if (!images.length) {
+          console.error(USAGE);
+          return 2;
+        }
+        const names = values.name ?? [];
+        const jobs: RentJob[] = images.map((img, i) => ({
+          image: path.resolve(img),
+          name: names[i] ?? path.basename(img, path.extname(img)).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
+          seed: values.seed ? Number(values.seed) : undefined,
+          quality: values.quality === "high" ? "high" : "standard",
+        }));
+        const apiKey = await loadRunPodKey({ app: "trellis-client" });
+        if (!apiKey) {
+          console.error(`No RunPod key. Add it in Benhäus › Settings › Credentials as ${RUNPOD_CREDENTIAL} (or set ${RUNPOD_KEY_ENV}).`);
+          return 1;
+        }
+        const opts = {
+          apiKey,
+          jobs,
+          outDir: values.out ?? path.resolve("trellis-out"),
+          minMemoryGb: values["min-memory"] ? Number(values["min-memory"]) : undefined,
+          maxMinutes: values.minutes ? Number(values.minutes) : undefined,
+          budgetUsd: values.budget ? Number(values.budget) : undefined,
+          onLog: log,
+        };
+        const plan = await rentPlan(opts);
+        console.log(`${jobs.length} model(s): ${jobs.map((j) => j.name).join(", ")}`);
+        for (const c of plan.candidates.slice(0, 5)) console.log(`  $${c.pricePerHour.toFixed(2)}/h  ${c.memory} GB  ${c.cloud.toLowerCase()}  ${c.name}`);
+        if (!plan.ok) {
+          console.error(`Not renting: ${plan.reason}`);
+          return 1;
+        }
+        console.log(`Ends after ${plan.maxMinutes} min at the latest: at most $${plan.maxCostUsd.toFixed(2)} (from $${plan.minCostUsd.toFixed(2)} on the cheapest), budget $${plan.budgetUsd.toFixed(2)}. Setup takes about 10 min of that.`);
+        if (!values.yes) {
+          console.log("Nothing rented. Run again with --yes to rent and model.");
+          return 3;
+        }
+        const ac = new AbortController();
+        const stop = () => {
+          console.error("Stopping: terminating the rented GPU…");
+          ac.abort();
+        };
+        process.on("SIGINT", stop);
+        process.on("SIGTERM", stop);
+        const r = await rentAndGenerate({ ...opts }, ac.signal);
+        for (const g of r.results) console.log(`glb      ${g.glb} (${g.secs}s, seed ${g.seed})`);
+        for (const f of r.failures) console.log(`failed   ${f.name}: ${f.error}`);
+        console.log(`${r.gpu ?? "No GPU"}: ${r.minutes} min, about $${r.spentUsd.toFixed(2)}.`);
+        return r.failures.length || !r.results.length ? 1 : 0;
       }
       default:
         console.error(USAGE);
