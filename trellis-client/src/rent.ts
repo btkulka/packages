@@ -21,6 +21,8 @@ export const COMFY_REV = "a592c0a654af22f75d97f214d6e3e34eb13cd9db";
 export const RENT_IMAGE = "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404";
 /** The local install's torch, which ships only for CUDA 13.0: the host's driver has to be CUDA 13+. */
 export const RENT_TORCH = { torch: "2.14.1", torchvision: "0.29.1", index: "https://download.pytorch.org/whl/cu130", minCuda: "13.0" };
+/** How long a pod's container may go without starting (no runtime uptime) before the rental gives up on it. */
+export const NO_START_S = 8 * 60;
 /** The proxy on the pod; ComfyUI listens behind it on 127.0.0.1:8189. */
 export const RENT_PORT = 8188;
 
@@ -204,6 +206,7 @@ export async function rentAndGenerate(o: RentOptions, signal?: AbortSignal): Pro
     const url = rental.url(RENT_PORT);
     const headers = { Authorization: `Bearer ${token}` };
     let seen = "";
+    let started = false;
     let failed = "";
     const ready = await waitForPodHttp(`${url}/system_stats`, {
       headers,
@@ -220,6 +223,11 @@ export async function rentAndGenerate(o: RentOptions, signal?: AbortSignal): Pro
         const f = steps.find((l) => l.includes("FAILED"));
         if (f) failed = f.replace(/^.*FAILED:\s*/, "");
         if (failed) throw new Error(`setup failed on the pod: ${failed}`);
+        // A container that never starts (the host couldn't pull the image: its DNS or registry access was down) has
+        // no runtime; the logs can't say, since that call often times out.
+        if (!started) started = ((await client.pod(rental.id).catch(() => null))?.runtime?.uptime ?? 0) > 0;
+        const pull = text.split(/\r?\n/).find((l) => /error creating container|failed to pull|pull access denied|ErrImagePull/i.test(l));
+        if (!started && !seen && (pull || secs >= NO_START_S)) throw new Error(`the pod's container never started${pull ? `: ${pull.trim()}` : ` in ${Math.round(secs / 60)} min`}; another pod lands on another host, so run it again`);
       },
     }).catch((e: Error) => {
       failed ||= e.message;

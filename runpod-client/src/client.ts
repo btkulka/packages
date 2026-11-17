@@ -38,6 +38,8 @@ export interface Pod {
   cudaVersion?: string | null;
   createdAt?: string;
   startedAt?: string | null;
+  /** While the container runs: its uptime (s) and the GPU's use; null until it has started. */
+  runtime?: { uptime?: number; gpus?: { util?: number; memoryUtil?: number }[]; [k: string]: unknown } | null;
   [k: string]: unknown;
 }
 
@@ -137,9 +139,72 @@ export function createRunPodClient(o: RunPodClientOptions): RunPodClient {
       }
     },
     action: (id, action) => call("POST", `/v2/pods/${encodeURIComponent(id)}/action`, { action }),
-    logs: (id, q = {}) => call("GET", `/v2/pods/${encodeURIComponent(id)}/logs`, undefined, { source: q.source ?? "container", tail: q.tail ?? 100 }, "text/plain"),
+    logs: async (id, q = {}) => {
+      // v2 serves logs as a Server-Sent Events stream that stays open to follow new lines, so reading it to the end
+      // never finishes. Take the backlog (it arrives at once), stop when the stream goes quiet, keep each event's line.
+      const path = `/v2/pods/${encodeURIComponent(id)}/logs`;
+      const url = new URL(base + path);
+      url.searchParams.set("source", q.source ?? "container");
+      url.searchParams.set("tail", String(q.tail ?? 100));
+      const ctl = new AbortController();
+      const hard = setTimeout(() => ctl.abort(), o.timeoutMs ?? 30_000);
+      let raw = "";
+      try {
+        const res = (await fetchImpl(url.toString(), { method: "GET", headers: { Authorization: `Bearer ${o.apiKey}`, Accept: "text/event-stream, text/plain" }, signal: ctl.signal })) as Awaited<ReturnType<FetchLike>> & { body?: ReadableStream<Uint8Array> | null };
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          let json: unknown;
+          try {
+            json = JSON.parse(text);
+          } catch {
+            json = undefined;
+          }
+          throw RunPodError.fromResponse(res.status, json, text, `GET ${path}`);
+        }
+        const reader = res.body?.getReader?.();
+        if (!reader) return sseLines(await res.text());
+        const decoder = new TextDecoder();
+        try {
+          for (;;) {
+            let idle: ReturnType<typeof setTimeout> | undefined;
+            const quiet = new Promise<null>((r) => (idle = setTimeout(() => r(null), raw ? 1500 : 10_000)));
+            const chunk = await Promise.race([reader.read(), quiet]);
+            clearTimeout(idle);
+            if (!chunk || chunk.done) break;
+            raw += decoder.decode(chunk.value, { stream: true });
+          }
+        } catch (e) {
+          if ((e as Error).name !== "AbortError") throw e;
+        }
+        reader.cancel().catch(() => undefined);
+        return sseLines(raw);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return sseLines(raw);
+        throw e;
+      } finally {
+        clearTimeout(hard);
+        ctl.abort();
+      }
+    },
     exec: (id, command, q = {}) => call("POST", `/v2/pods/${encodeURIComponent(id)}/exec`, { command, ...q }),
   };
+}
+
+/** The lines of a logs response: each Server-Sent Event's `line` (`data: {"source","line","ts"}`), or plain text as is. */
+export function sseLines(raw: string): string {
+  if (!/^data:/m.test(raw)) return raw;
+  const out: string[] = [];
+  for (const l of raw.split(/\r?\n/)) {
+    if (!l.startsWith("data:")) continue;
+    const d = l.slice(5).trim();
+    try {
+      const j = JSON.parse(d) as { line?: unknown };
+      out.push(typeof j?.line === "string" ? j.line : d);
+    } catch {
+      out.push(d);
+    }
+  }
+  return out.join("\n");
 }
 
 /** A pod's HTTP port through RunPod's proxy: https://<pod id>-<port>.proxy.runpod.net (a 100 s limit per request). */
