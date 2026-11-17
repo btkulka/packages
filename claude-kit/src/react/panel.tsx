@@ -14,17 +14,17 @@ import type { ClaudeStore } from "../client/index.js";
 // Benhäus's floating panel); ClaudeChat is one chat in a page of its own.
 
 /** A chat's ⋯ menu: the package's items, then whatever the app makes of them (ui.menu). */
-function panelMenu(chat: ChatState, models: ChatsState["models"], where: Where, t: ClaudeTransport, ui: ClaudeUi): MenuItem[] {
+function panelMenu(chat: ChatState, models: ChatsState["models"], where: Where, t: ClaudeTransport, ui: ClaudeUi, limits?: ChatsState["limits"]): MenuItem[] {
   const list = models.length ? models : [{ value: "", name: "Default" }];
   const items: MenuItem[] = [
     ...(where === "panel"
       ? [
           { id: "new", label: "New chat", icon: "plus" },
-          { id: "past", label: "Past chats", icon: "search" },
+          ...(limits?.past === false ? [] : [{ id: "past", label: "Past chats", icon: "search" }]),
         ]
       : []),
     { id: "close", label: "Close chat", icon: "close" },
-    ...(t.terminal && !ui.phone ? [{ id: "terminal", label: "Continue in terminal", icon: "terminal" }] : []),
+    ...(t.terminal && !ui.phone && limits?.terminal !== false ? [{ id: "terminal", label: "Continue in terminal", icon: "terminal" }] : []),
     {
       id: "model",
       label: "Model",
@@ -54,8 +54,9 @@ export function More({ chat, where }: { chat: ChatState; where: Where }) {
   const ui = useUi();
   const store = useStore();
   const models = useClaude((s) => s.chats?.models) ?? [];
+  const limits = useClaude((s) => s.chats?.limits);
   return (
-    <MenuButton className="ck-iconbtn" label="More" tip="More" items={() => panelMenu(chat, models, where, t, ui)} onSelect={(item) => onPanelMenu(item, chat, where, t, ui, store)}>
+    <MenuButton className="ck-iconbtn" label="More" tip="More" items={() => panelMenu(chat, models, where, t, ui, limits)} onSelect={(item) => onPanelMenu(item, chat, where, t, ui, store)}>
       <MoreIcon />
     </MenuButton>
   );
@@ -117,11 +118,13 @@ export function ClaudePanel({ hidden = [], onHide, className, mark }: { hidden?:
           )}
         </span>
         {!past && <span className={`ck-sig ${word.cls}`}>{word.label}</span>}
-        <Tooltip label="Past chats" sub={past ? "Back to the chat" : "Pick up an earlier conversation"}>
-          <button type="button" className="ck-iconbtn" aria-label="Past chats" aria-pressed={past} onClick={() => store.setPast(!past)}>
-            <HistoryIcon />
-          </button>
-        </Tooltip>
+        {list.limits?.past !== false && (
+          <Tooltip label="Past chats" sub={past ? "Back to the chat" : "Pick up an earlier conversation"}>
+            <button type="button" className="ck-iconbtn" aria-label="Past chats" aria-pressed={past} onClick={() => store.setPast(!past)}>
+              <HistoryIcon />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip label="New chat" sub="Beside this one">
           <button type="button" className="ck-iconbtn" aria-label="New chat" onClick={() => (store.setPast(false), void t.newChat())}>
             <PlusIcon />

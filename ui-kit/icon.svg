@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>ui-kit: the controls Ben's web apps share, a switch over a segmented control</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f1a17"/><stop offset="1" stop-color="#050404"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0a070" stop-opacity="0.30"/><stop offset="1" stop-color="#c4562f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe6d4" stop-opacity="0.22"/><stop offset="1" stop-color="#f0a070" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="56" y1="60" x2="200" y2="196" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe2cc"/><stop offset="0.5" stop-color="#ee9a6d"/><stop offset="1" stop-color="#c4562f"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <g id="kit">
+      <!-- A switch, on. -->
+      <rect x="62" y="62" width="132" height="60" rx="30"/>
+      <!-- A segmented control. -->
+      <rect x="50" y="140" width="156" height="54" rx="20"/>
+    </g>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="206" rx="70" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <!-- The same shadow the monogram icons cast. -->
+    <g transform="translate(0 8)" fill="#000000" opacity="0.45"><use href="#kit"/></g>
+    <g fill="url(#face)"><use href="#kit"/></g>
+    <!-- The switch's thumb, slid to "on", and the segmented control's lit thumb, cut from the face. -->
+    <circle cx="164" cy="92" r="21" fill="#4a1d0c" fill-opacity="0.55"/>
+    <rect x="58" y="148" width="62" height="38" rx="14" fill="#4a1d0c" fill-opacity="0.55"/>
+    <g fill="#4a1d0c" fill-opacity="0.4"><circle cx="146" cy="167" r="5"/><circle cx="180" cy="167" r="5"/></g>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

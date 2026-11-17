@@ -16,25 +16,51 @@ import css from "../styles.css";
 // Attributes: base (the http handler's path, "/claude"), variant ("drawer" or
 // "float"), hotkey ("ctrl+shift+k"), title ("Claude"), theme ("light", "dark",
 // or the system's), width (px). Methods: open(options?), close(), toggle().
+// Theming: any --ck-* variable the page sets on the element (in a media query
+// too, like --ck-fab-bottom above a tab bar) reaches the widget inside.
 // From script anywhere: window.dispatchEvent(new CustomEvent("claude-kit:open",
 // { detail: { text, context, about } })).
 
+/** Every --ck-* variable the stylesheet uses: the ones a page may set on the element. */
+const VARS = [...new Set(css.match(/--ck-[a-z0-9-]+/g) ?? [])];
+
 class ClaudeWidgetElement extends HTMLElement {
-  static observedAttributes = ["base", "variant", "hotkey", "title", "theme", "width"];
+  // style too: a page setting --ck-* inline (hiding the button while its own sheet is open) takes effect at once.
+  static observedAttributes = ["base", "variant", "hotkey", "title", "theme", "width", "style"];
   private root?: Root;
   private shell?: HTMLDivElement;
   private portal?: HTMLDivElement;
+  private hostVars?: HTMLStyleElement;
+  private frame = 0;
+
+  /** The page's --ck-* values on this element, set on the widget's roots (above the stylesheet's :where() defaults). */
+  private applyVars = () => {
+    this.frame = 0;
+    if (!this.hostVars) return;
+    const cs = getComputedStyle(this);
+    const decl = VARS.map((n) => [n, cs.getPropertyValue(n).trim()] as const)
+      .filter(([, v]) => v)
+      .map(([n, v]) => `${n}: ${v};`)
+      .join(" ");
+    const text = decl ? `.ck-root, .ck-portal { ${decl} }` : "";
+    if (this.hostVars.textContent !== text) this.hostVars.textContent = text;
+  };
+  private onResize = () => {
+    if (!this.frame) this.frame = requestAnimationFrame(this.applyVars);
+  };
 
   connectedCallback() {
     if (this.root) return this.draw();
     const shadow = this.attachShadow({ mode: "open" });
     const style = document.createElement("style");
     style.textContent = css;
+    this.hostVars = document.createElement("style");
     this.shell = document.createElement("div");
     this.portal = document.createElement("div");
     this.portal.className = "ck-portal";
-    shadow.append(style, this.shell, this.portal);
+    shadow.append(style, this.hostVars, this.shell, this.portal);
     this.root = createRoot(this.shell);
+    window.addEventListener("resize", this.onResize);
     this.draw();
   }
 
@@ -42,6 +68,7 @@ class ClaudeWidgetElement extends HTMLElement {
     // Moved within the page, it's connected again at once; only really gone does it unmount.
     queueMicrotask(() => {
       if (this.isConnected || !this.root) return;
+      window.removeEventListener("resize", this.onResize);
       this.root.unmount();
       this.root = undefined;
     });
@@ -79,6 +106,7 @@ class ClaudeWidgetElement extends HTMLElement {
     else delete this.shell!.dataset.ckTheme;
     if (theme) this.portal!.dataset.ckTheme = theme;
     else delete this.portal!.dataset.ckTheme;
+    this.applyVars();
     const width = Number(this.getAttribute("width")) || undefined;
     const portal = this.portal!;
     this.root!.render(

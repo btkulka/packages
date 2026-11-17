@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { FetchLike } from "@btkulka/http-kit";
-import { createRunPodClient, proxyUrl } from "./client.js";
+import { createRunPodClient, proxyUrl, sseLines } from "./client.js";
 import { isRunPodError, RunPodError } from "./errors.js";
 import { planRental, rent, sweep } from "./rental.js";
 
@@ -173,4 +173,37 @@ test("sweep ends only this package's pods", async () => {
 
 test("proxyUrl is RunPod's HTTPS proxy form", () => {
   assert.equal(proxyUrl("abc123xyz", 8000), "https://abc123xyz-8000.proxy.runpod.net");
+});
+
+test("logs reads the backlog of v2's event stream and stops when it goes quiet", async () => {
+  const events = [
+    'id: 1\ndata: {"source":"system","line":"create container runpod/pytorch","ts":"1"}\n\n',
+    'id: 2\ndata: {"source":"container","line":"[rent] torch 2.14.1 (CUDA 13)","ts":"2"}\n\n',
+  ];
+  let cancelled = false;
+  const fetchImpl = (async () => ({
+    ok: true,
+    status: 200,
+    text: async () => events.join(""),
+    // The stream sends its backlog, then stays open forever, as v2 does.
+    body: new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const e of events) c.enqueue(new TextEncoder().encode(e));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+  })) as unknown as FetchLike;
+  const client = createRunPodClient({ apiKey: "k", fetch: fetchImpl });
+  const started = Date.now();
+  const text = await client.logs("pod1", { tail: 10 });
+  assert.equal(text, "create container runpod/pytorch\n[rent] torch 2.14.1 (CUDA 13)");
+  assert.ok(Date.now() - started < 5000);
+  assert.ok(cancelled);
+});
+
+test("sseLines keeps plain text as it is", () => {
+  assert.equal(sseLines("one\ntwo"), "one\ntwo");
+  assert.equal(sseLines('data: {"line":"a"}\n\ndata: not json\n'), "a\nnot json");
 });

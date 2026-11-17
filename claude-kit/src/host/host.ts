@@ -20,6 +20,8 @@ import type {
   NewChatOptions,
   PastChat,
   ThumbSize,
+  ChatLimits,
+  ChatVerbosity,
 } from "../types.js";
 import { FileStore } from "./files.js";
 import { ImageStore, type ImageTools } from "./images.js";
@@ -80,7 +82,21 @@ export interface ChatHostOptions {
   /** The tag a new chat's page context travels in, ahead of the first message: "app-context". */
   contextTag?: string;
   /** Past chats: only the app's folder's conversations ("folder", the default) or every one on the machine ("all"). */
-  pastChats?: "folder" | "all";
+  pastChats?: "folder" | "all" | "none";
+  /**
+   * The modes a chat may be in, for a host other people use. Left out, every mode. Any other is refused
+   * (configure throws), a chat saved in one starts in the first of these, and Bypass ("bypassPermissions") is
+   * only possible when it's listed.
+   */
+  modes?: ClaudeMode[];
+  /** false: no Continue in terminal (terminal() throws, and the screens don't offer it). Default true. */
+  terminal?: boolean;
+  /** true: every chat works in `folder`; a screen can't start one anywhere else. */
+  lockFolder?: boolean;
+  /** The line an empty chat shows under its heading, in place of the package's ("with your skills, CLAUDE.md files and MCP servers"). */
+  intro?: string;
+  /** How much of the work the screens show: "full" (every tool row, the default) or "conversational" (only what's said). */
+  verbosity?: ChatVerbosity;
   /** Who answers asks, for what Claude is told when one is denied or cut short: "The user". */
   person?: string;
   /** Said after "<folder> doesn't exist." when a chat's folder is gone. */
@@ -209,7 +225,7 @@ export class ChatHost {
     this.picked = saved.picked ?? {};
     const d = this.defaults();
     // A chat saved before chats had their own model ran on the default one.
-    for (const c of saved.chats) this.chats.set(c.id, this.makeChat({ ...c, model: c.model ?? d.model, mode: c.mode ?? d.mode }));
+    for (const c of saved.chats) this.chats.set(c.id, this.makeChat({ ...c, model: c.model ?? d.model, mode: this.fitMode(c.mode ?? d.mode), folder: this.opts.lockFolder ? d.folder : c.folder }));
     this.current = saved.current && this.chats.has(saved.current) ? saved.current : ([...this.chats.keys()].at(-1) ?? "");
     if (!this.chats.size) this.addChat();
     // No screen is up yet: each reads them all whole (state()) when it is.
@@ -249,9 +265,17 @@ export class ChatHost {
     return {
       folder: val(o.folder),
       model: o.model !== undefined ? val(o.model) : (this.picked?.model ?? ""),
-      mode: o.mode !== undefined ? val(o.mode) : (this.picked?.mode ?? "default"),
+      mode: this.fitMode(o.mode !== undefined ? val(o.mode) : (this.picked?.mode ?? "default")),
     };
   }
+
+  /** Whether a chat may be in this mode (the host's `modes`). */
+  private allows = (mode: ClaudeMode) => !this.opts.modes?.length || this.opts.modes.includes(mode);
+  /** The mode, or the first allowed one when it isn't. */
+  private fitMode = (mode: ClaudeMode): ClaudeMode => (this.allows(mode) ? mode : this.opts.modes![0]);
+
+  /** What the screens may offer. */
+  private limits = (): ChatLimits => ({ modes: this.opts.modes?.length ? [...this.opts.modes] : undefined, past: this.opts.pastChats !== "none", terminal: this.opts.terminal !== false });
 
   private readJson(path: string): unknown {
     try {
@@ -287,7 +311,7 @@ export class ChatHost {
   state(): ChatsState {
     const now = this.shown().id;
     const streams = Object.fromEntries([...this.chats.values()].filter((c) => c.stream).map((c) => [c.id, c.stream]));
-    return { current: now, chats: [...this.chats.values()].map(this.stateOf), models: this.models, streams };
+    return { current: now, chats: [...this.chats.values()].map(this.stateOf), models: this.models, streams, limits: this.limits(), intro: this.opts.intro, verbosity: this.opts.verbosity };
   }
 
   private save() {
@@ -315,7 +339,7 @@ export class ChatHost {
       this.announced.add(c.id);
       c.sent = c.state.items;
     }
-    this.emit({ type: "chats", payload: { current: now, ids: [...this.chats.keys()], chats: fresh.map(this.stateOf), models: this.models } satisfies ChatsPatch });
+    this.emit({ type: "chats", payload: { current: now, ids: [...this.chats.keys()], chats: fresh.map(this.stateOf), models: this.models, limits: this.limits(), intro: this.opts.intro, verbosity: this.opts.verbosity } satisfies ChatsPatch });
   }
 
   /** Chats came or went, or another is shown. */
@@ -395,7 +419,7 @@ export class ChatHost {
   /** A new chat at the end of the chips, in the default folder, mode and model unless given one. It's the one shown. */
   private addChat(o: { model?: string; title?: string; about?: string; folder?: string } = {}): Chat {
     const d = this.defaults();
-    const c = this.makeChat({ id: this.nextId(), title: o.title, about: o.about, folder: o.folder ?? d.folder, model: o.model ?? d.model, mode: d.mode });
+    const c = this.makeChat({ id: this.nextId(), title: o.title, about: o.about, folder: this.opts.lockFolder ? d.folder : (o.folder ?? d.folder), model: o.model ?? d.model, mode: d.mode });
     this.chats.set(c.id, c);
     this.current = c.id;
     return c;
@@ -630,7 +654,7 @@ export class ChatHost {
           resume,
           model: c.state.pickedModel || undefined,
           permissionMode: c.state.mode,
-          allowDangerouslySkipPermissions: true,
+          allowDangerouslySkipPermissions: this.allows("bypassPermissions"),
           includePartialMessages: true,
           canUseTool: this.canUseTool(c),
           // Its questions come as plain text instead; the chat has no form for them.
@@ -829,6 +853,7 @@ export class ChatHost {
    * `query` has to be in its title, first message or folder.
    */
   async past(o: { query?: string; folder?: string; limit?: number; offset?: number } = {}): Promise<{ total: number; chats: PastChat[] }> {
+    if (this.opts.pastChats === "none") return { total: 0, chats: [] };
     const sdk = (await this.opts.sdk()) as AgentSdk;
     const words = (o.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
     const open = new Map<string, string>();
@@ -857,6 +882,7 @@ export class ChatHost {
    * conversation so far. One already open is just shown.
    */
   async load(sessionId: string): Promise<ChatsState> {
+    if (this.opts.pastChats === "none") throw new Error("Past chats aren't open here.");
     const opened = () => [...this.chats.values()].find((c) => c.state.sessionId === sessionId);
     if (opened()) return this.select(opened()!.id);
     const sdk = (await this.opts.sdk()) as AgentSdk;
@@ -894,6 +920,7 @@ export class ChatHost {
 
   /** Continue in terminal: a chat's conversation in Claude Code in a terminal. The host lets go of it, and picks it back up from the transcript at its next message. */
   terminal(ref?: string): { folder: string; command: string } {
+    if (this.opts.terminal === false) throw new Error("Continue in terminal isn't open here.");
     const c = this.find(ref);
     const { folder, sessionId, pickedModel } = c.state;
     const command = `${sessionId ? `claude --resume ${sessionId}` : "claude"}${pickedModel ? ` --model ${pickedModel}` : ""}`;
@@ -923,6 +950,7 @@ export class ChatHost {
 
   /** A chat's mode or model. New chats take the last ones picked, unless the app sets their defaults itself. */
   configure(ref: string | undefined, o: { mode?: ClaudeMode; model?: string }): ChatState {
+    if (o.mode && !this.allows(o.mode)) throw new Error(`Chats here can't be put in ${o.mode} mode.`);
     const c = this.find(ref);
     if (o.mode) {
       this.setMode(c, o.mode);
@@ -939,7 +967,7 @@ export class ChatHost {
   /** The app's defaults changed (its settings): mode and model apply to the chat shown too; a new folder is for new chats, or the shown one if nothing's been said in it. */
   defaultsChanged(patch: { mode?: ClaudeMode; model?: string; folder?: string }) {
     const c = this.shown();
-    if (patch.mode) this.setMode(c, patch.mode);
+    if (patch.mode && this.allows(patch.mode)) this.setMode(c, patch.mode);
     if (patch.model !== undefined) this.setModel(c, patch.model);
     if (patch.folder && patch.folder !== c.state.folder) {
       if (!this.blank(c)) this.note(c, `New chats work in ${patch.folder}.`);

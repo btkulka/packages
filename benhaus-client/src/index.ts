@@ -3,9 +3,11 @@
 export { createBenhausClient, type BenhausClient, type BenhausClientOptions, type CallOptions, type ToolCallResult } from "./client.js";
 export { readDiscovery, defaultDiscoveryFile, type BenhausDiscovery } from "./discovery.js";
 export { BenhausError, isBenhausError, type BenhausErrorKind } from "./errors.js";
+export { createProfileCache, PERSON_HEADER, REMOTE_COOKIE, requestPerson, type RequestLike, type RequestPerson } from "./people.js";
 export { loadCredential, applyBenhausEnv, type LoadCredentialOptions, type LoadedCredential, type ApplyEnvOptions, type ApplyEnvResult } from "./credentials.js";
 export type {
   BenhausHealth,
+  BenhausProfile,
   BenhausVertical,
   CalendarEvent,
   CalendarEventsInput,

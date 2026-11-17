@@ -197,7 +197,7 @@
 /* ---------------------------------------------- the button and the drawer */
 
 .ck-fab {
-  position: fixed; z-index: var(--ck-z); right: 20px; bottom: 20px; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+  position: fixed; z-index: var(--ck-z); right: var(--ck-fab-right, 20px); bottom: var(--ck-fab-bottom, 20px); width: 52px; height: 52px; border-radius: 50%; display: var(--ck-fab-display, grid); place-items: center;
   background: var(--ck-glass-strong); backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
   border: 1px solid var(--ck-stroke-strong); box-shadow: var(--ck-shadow); transition: transform var(--ck-quick), background var(--ck-quick);
 }

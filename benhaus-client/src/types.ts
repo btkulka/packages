@@ -163,6 +163,15 @@ export interface CalendarEventsResult {
 
 /* --------------------------------------------------------- notifications */
 
+/** A person in Benhäus's Settings › People, as apps show them: Ben ("owner") or a guest, with their picture. Never a key. */
+export interface BenhausProfile {
+  id: string;
+  name: string;
+  role: "owner" | "guest";
+  /** A data: URL (PNG, JPEG, WebP or GIF). */
+  avatar?: string;
+}
+
 export interface NotifyInput {
   /** One line, in words Ben reads. */
   title: string;

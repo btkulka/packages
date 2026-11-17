@@ -16,8 +16,7 @@ import type {
   NotifyInput,
   SendMailInput,
   SendMailResult,
-  SetCredentialInput,
-} from "./types.js";
+  SetCredentialInput, BenhausProfile } from "./types.js";
 
 export interface BenhausClientOptions {
   /** Where Benhäus writes its address and token. Default ~/.benhaus/mcp.json. */
@@ -69,6 +68,16 @@ export interface BenhausClient {
   };
   /** A notification in Benhäus's center (and on the desktop, per Ben's rules). */
   notify(o: NotifyInput, opts?: CallOptions): Promise<unknown>;
+
+  /** Settings › People: who uses Ben's apps (requestPerson in people.ts says who a request is from). */
+  people: {
+    /** Everyone's name and picture. */
+    profiles(opts?: CallOptions): Promise<BenhausProfile[]>;
+    /** Whose phone-remote session this is (its bh_remote cookie), or null. */
+    whois(session: string, opts?: CallOptions): Promise<(BenhausProfile & { tools?: string[] }) | null>;
+    /** A person's own name or picture (null takes it away), set from an app on their behalf. */
+    updateProfile(id: string, patch: { name?: string; avatar?: string | null }, opts?: CallOptions): Promise<BenhausProfile>;
+  };
 
   /**
    * Settings › Credentials. get and env return values, over the endpoint's /credentials routes (never an MCP
@@ -266,6 +275,11 @@ export function createBenhausClient(options: BenhausClientOptions = {}): Benhaus
         ),
     },
     notify: (o, opts) => call("post_notification", clean({ ...o }), opts),
+    people: {
+      profiles: async (opts) => (await call<{ people: BenhausProfile[] }>("people_profiles", {}, opts)).people,
+      whois: async (session, opts) => (await call<{ person: (BenhausProfile & { tools?: string[] }) | null }>("phone_whois", { session }, opts)).person,
+      updateProfile: (id, patch, opts) => call<BenhausProfile>("update_profile", { person: id, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.avatar !== undefined ? { avatar: patch.avatar } : {}) }, opts),
+    },
     credentials: {
       get: (id, o = {}, opts) => post<CredentialValues>("/credentials/read", clean({ id, app: o.app }), opts),
       env: async (o, opts) => (await post<CredentialEnvResult>("/credentials/env", { app: o.app }, opts)) ?? { env: {}, missing: [] },

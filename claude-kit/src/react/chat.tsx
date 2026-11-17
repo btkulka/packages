@@ -212,8 +212,20 @@ const SEEN_EVERY_MS = 60_000;
  * The reply being written and the line saying what the turn is doing. Only
  * this redraws as a reply streams in; the conversation above it doesn't.
  */
+/** What a running tool is doing, in plain words, for a conversational chat. */
+function plainly(tool: string, detail?: string): string {
+  if (/^mcp__/.test(tool)) return "Updating things in the app";
+  if (/^(Read|Glob|Grep|LS|NotebookRead)$/.test(tool)) return "Looking through the app";
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) return "Making the change";
+  if (/^(Bash|PowerShell)$/.test(tool)) return /\b(test|typecheck|tsc|build|check)\b/.test(detail ?? "") ? "Checking it works" : "Running something";
+  if (/^Web(Fetch|Search)$/.test(tool)) return "Looking it up";
+  if (tool === "TodoWrite") return "Planning it out";
+  return "Working on it";
+}
+
 function Live({ chat, log, pinned }: { chat: ChatState; log: RefObject<HTMLDivElement | null>; pinned: RefObject<boolean> }) {
   const stream = useClaude((s) => s.streams[chat.id] ?? "");
+  const quiet = useClaude((s) => s.chats?.verbosity === "conversational");
   useLayoutEffect(() => {
     const el = log.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
@@ -227,7 +239,8 @@ function Live({ chat, log, pinned }: { chat: ChatState; log: RefObject<HTMLDivEl
           <Prose text={stream} />
         </div>
       )}
-      {working && !stream && !chat.asks.length && !(last?.kind === "tool" && last.state === "running") && <p className="ck-thinking">{chat.status === "starting" ? "Starting Claude Code…" : `${chat.activity ?? "Thinking"}…`}</p>}
+      {working && !stream && !chat.asks.length && quiet && <p className="ck-thinking">{chat.status === "starting" ? "Starting…" : last?.kind === "tool" && last.state === "running" ? `${plainly(last.name, last.detail)}…` : `${chat.activity ?? "Thinking"}…`}</p>}
+      {working && !stream && !chat.asks.length && !quiet && !(last?.kind === "tool" && last.state === "running") && <p className="ck-thinking">{chat.status === "starting" ? "Starting Claude Code…" : `${chat.activity ?? "Thinking"}…`}</p>}
     </>
   );
 }
@@ -240,6 +253,12 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
   const t = useTransport();
   const ui = useUi();
   const store = useStore();
+  // What the host lets chats do (ChatLimits): only its modes are offered, and Past chats only when it lists them.
+  const limits = useClaude((s) => s.chats?.limits);
+  const intro = useClaude((s) => s.chats?.intro);
+  const modes = MODES.filter((m) => !limits?.modes || limits.modes.includes(m.value));
+  // A conversational chat (the host's verbosity) shows what's said and errors, not every tool row.
+  const verbosity = useClaude((s) => s.chats?.verbosity);
   const { Button, SegmentedControl, Tooltip } = ui.c;
   const [text, setText] = useState(drafts.get(chat.id) ?? "");
   const [pics, setPics] = useState<Pending[]>(waiting.get(chat.id) ?? []);
@@ -442,9 +461,9 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
             <div className="ck-empty">
               <p className="ck-headline">{chat.about ? `Ask about ${chat.about}.` : "Ask anything, or ask for code."}</p>
               <p className="ck-callout ck-ink3">
-                Claude Code in {ui.showPath(chat.folder)}, with your skills, CLAUDE.md files and MCP servers.{ui.emptyNote ? ` ${ui.emptyNote}` : ""}
+                {intro ?? `Claude Code in ${ui.showPath(chat.folder)}, with your skills, CLAUDE.md files and MCP servers.`}{ui.emptyNote ? ` ${ui.emptyNote}` : ""}
               </p>
-              {!chat.about && where === "panel" && (
+              {!chat.about && where === "panel" && limits?.past !== false && (
                 <button type="button" className="ck-chip ck-pastopen" onClick={() => store.setPast(true)}>
                   <HistoryIcon size={13} />
                   Pick up a past chat
@@ -452,7 +471,7 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
               )}
             </div>
           )}
-          {items.map((it) => (
+          {(verbosity === "conversational" ? items.filter((it) => it.kind === "you" || it.kind === "claude" || (it.kind === "note" && it.error)) : items).map((it) => (
             <Row key={it.id} item={it} />
           ))}
           <Live chat={chat} log={log} pinned={pinned} />
@@ -548,14 +567,14 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
               className="ck-chip ck-mode"
               label={`How Claude asks: ${MODES.find((m) => m.value === mode)?.label ?? mode}`}
               above
-              items={() => MODES.map((m) => ({ id: m.value, label: m.label, checked: m.value === mode }))}
+              items={() => modes.map((m) => ({ id: m.value, label: m.label, checked: m.value === mode }))}
               onSelect={(item) => item.id && setMode(item.id as ClaudeMode)}
             >
               {MODES.find((m) => m.value === mode)?.label ?? mode}
               <ChevronDown />
             </MenuButton>
           ) : (
-            <SegmentedControl label="How Claude asks" value={mode} onChange={(v) => setMode(v as ClaudeMode)} options={MODES.map((m) => ({ value: m.value, label: m.label }))} />
+            <SegmentedControl label="How Claude asks" value={mode} onChange={(v) => setMode(v as ClaudeMode)} options={modes.map((m) => ({ value: m.value, label: m.label }))} />
           )}
           <span className="ck-grow" />
           <Tooltip label="Attach images or files" sub="Or paste or drop them here">

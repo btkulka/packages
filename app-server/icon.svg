@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>app-server: one process serving an app's API and its page, on this machine and Tailscale</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7cb8ff" stop-opacity="0.30"/><stop offset="1" stop-color="#2f6fc4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dcebff" stop-opacity="0.22"/><stop offset="1" stop-color="#7cb8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="64" y1="56" x2="192" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dcebff"/><stop offset="0.5" stop-color="#7cb8ff"/><stop offset="1" stop-color="#2f6fc4"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <g id="srv">
+      <rect x="56" y="64" width="144" height="56" rx="15"/>
+      <rect x="56" y="134" width="144" height="56" rx="15"/>
+    </g>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="204" rx="64" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <!-- One process, two jobs: the API and the page, stacked like a server's slabs. It casts the same shadow the monogram icons do. -->
+    <g transform="translate(0 8)" fill="#000000" opacity="0.45"><use href="#srv"/></g>
+    <g fill="url(#face)"><use href="#srv"/></g>
+    <!-- Each slab's light and vents, cut from the face. -->
+    <g fill="#163a6b" fill-opacity="0.6"><circle cx="82" cy="92" r="8"/><circle cx="82" cy="162" r="8"/></g>
+    <g stroke="#163a6b" stroke-opacity="0.6" stroke-width="8" stroke-linecap="round"><path d="M110 92h64M110 162h64"/></g>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

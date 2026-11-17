@@ -1,0 +1,2 @@
+export { cleanAvatar, createPeople, sameSecret, type Guest, type Listed, type People, type PeopleOptions, type Person, type Profile, type Role, type SecretStore } from "./people.js";
+export { baseTool, definePolicy, describe, mayCall, mayChange, mayHear, mayReachPort, seesNotice, usesTool, type AccessPolicy, type Refusal, type ToolPorts } from "./policy.js";

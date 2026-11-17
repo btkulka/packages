@@ -1,6 +1,6 @@
 // @btkulka/runpod-client: rent a GPU by the minute on RunPod, guarded.
 
-export { createRunPodClient, proxyUrl, RUNPOD_API } from "./client.js";
+export { createRunPodClient, proxyUrl, sseLines, RUNPOD_API } from "./client.js";
 export type { RunPodClient, RunPodClientOptions, GpuType, Pod, PodStatus, Cloud, CreatePodBody, ExecResult } from "./client.js";
 export { RunPodError, isRunPodError } from "./errors.js";
 export type { RunPodErrorCategory } from "./errors.js";

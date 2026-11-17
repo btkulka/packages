@@ -51,6 +51,15 @@ Options worth knowing:
 - **`notify(notice, chat, count)`**: an ask, or a finished reply, while nobody's looking. Undefined means clear that chat's notices.
 - **`openTerminal(folder, command)`**: Continue in terminal. The default opens PowerShell on Windows and Terminal on a Mac.
 - **`held()`**: chats open elsewhere, like a tab of their own, so a blank one isn't dropped as spare.
+- **Limits, for chats other people use** (a guest on a phone, through Benhäus). The host enforces each one whatever a screen sends, and the screens offer only what's allowed (`ChatsState.limits`):
+  - `modes: ["acceptEdits", "plan", "default"]` sets which modes a chat may be in. Another is refused, and a chat saved in one starts in the first. Bypass is only possible when it's listed (`allowDangerouslySkipPermissions` follows).
+  - `pastChats: "none"` turns off Past chats: none listed, none picked up.
+  - `terminal: false` turns off Continue in terminal.
+  - `lockFolder: true` keeps every chat in `folder`: a screen can't start one anywhere else.
+  - `verbosity: "conversational"` shows only what's said, both ways, and error notes: no tool rows. While Claude works, one plain line says what it's doing ("Making the change…", "Checking it works…"). The default `"full"` shows every tool row with its output.
+  - `intro` replaces the empty chat's line ("with your skills, CLAUDE.md files and MCP servers"), which isn't true of a host that leaves them out.
+
+  None of this keeps out Ben's settings and MCP servers. For that, pass `queryOptions: () => ({ settingSources: ["project"], extraArgs: { "strict-mcp-config": null } })`, and add PreToolUse `hooks` for which commands and paths are allowed.
 - **`contextTag`** (`"app-context"`), **`person`** (`"The user"`), **`folderHint`**, **`file`**, **`legacyFile`**, **`env`**, **`unseenMs`**, **`idleMs`**.
 
 Methods match what the screens call: `state`, `start`, `seen`, `send`, `stop`, `newChat`, `select`, `close`, `answer`, `terminal`, `configure`, `past`, `load`, `image`. There are also `on(listener)`, plus `letIdleGo(all)`, `defaultsChanged(patch)`, `restartStopped()`, `dropSessions()`, `end()` and `dispose()`. Call `host.end()` when the app quits.
@@ -104,7 +113,7 @@ Then add this to the page layout:
 <claude-widget hotkey="ctrl+shift+k"></claude-widget>
 ```
 
-The element takes these attributes: `base` (`/claude`), `variant` (`drawer` or `float`), `hotkey`, `title`, `theme` (`light` or `dark`; leave it out to follow the system's), and `width`. Its methods are `open(options?)`, `close()` and `toggle()`. From any script, `window.dispatchEvent(new CustomEvent("claude-kit:open", { detail: { text, context, about } }))` opens it on a new chat.
+The element takes these attributes: `base` (`/claude`), `variant` (`drawer` or `float`), `hotkey`, `title`, `theme` (`light` or `dark`; leave it out to follow the system's), and `width`. Any `--ck-*` variable the page sets on the element reaches the widget inside its shadow root, in a media query too. For example, `claude-widget { --ck-accent: #d4704a; }`, and `--ck-fab-bottom` / `--ck-fab-right` to lift the corner button above a tab bar, or `--ck-fab-display: none` to hide it (the app then opens the chat itself with `open()`). Inline on the element (its `style`), a change takes effect at once. Its methods are `open(options?)`, `close()` and `toggle()`. From any script, `window.dispatchEvent(new CustomEvent("claude-kit:open", { detail: { text, context, about } }))` opens it on a new chat.
 
 **Who can reach it.** A chat runs Claude Code on this machine, so the handler only answers connections from this machine. The socket has to come from a loopback address, which matters for a server that also listens on its Tailscale address: a tunnel from another machine keeps `Host: localhost`. The `Host` header has to be localhost, 127.0.0.1 or ::1, which stops DNS rebinding. Pages from another origin (by `Origin` and `Sec-Fetch-Site`) and RPC that isn't JSON are turned away. To open it up on purpose, pass `allowRemote: true` with `allowHosts: ["zagreus.tailnet.ts.net"]`.
 

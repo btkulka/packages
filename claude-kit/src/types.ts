@@ -76,6 +76,19 @@ export interface ChatState {
   activity?: string;
 }
 
+/**
+ * What the host lets its chats do, for the screens to offer only that (the host refuses the rest whatever a
+ * screen sends). Left out: everything.
+ */
+export interface ChatLimits {
+  /** The modes a chat may be in. Left out, every one. */
+  modes?: ClaudeMode[];
+  /** Past chats can be listed and picked up. */
+  past: boolean;
+  /** Continue in terminal. */
+  terminal: boolean;
+}
+
 /** Every chat, in the order of their chips. */
 export interface ChatsState {
   /** The one shown. */
@@ -83,6 +96,11 @@ export interface ChatsState {
   chats: ChatState[];
   /** The models Claude Code offers this account. */
   models: { value: string; name: string }[];
+  limits?: ChatLimits;
+  /** The line an empty chat shows under its heading, from the host; left out, the package's own. */
+  intro?: string;
+  /** How much of the work a chat shows (the host's `verbosity`): every tool row, or only the conversation. */
+  verbosity?: ChatVerbosity;
   /** The replies being written, by chat id, so a screen opening mid-reply has them (the stream event carries each as it grows). */
   streams?: Record<string, string>;
 }
@@ -102,7 +120,17 @@ export interface ChatsPatch {
   ids: string[];
   chats: ChatState[];
   models: ChatsState["models"];
+  limits?: ChatLimits;
+  intro?: string;
+  verbosity?: ChatVerbosity;
 }
+
+/**
+ * "full": every tool Claude uses is a row (what it read, edited and ran, with the output). "conversational": only
+ * what's said, both ways, and notes that something went wrong; while Claude works, one plain line says what it's
+ * doing ("Making the change…"). For people who aren't programmers.
+ */
+export type ChatVerbosity = "full" | "conversational";
 
 /** The "stream" event: the reply a chat is writing grew (its text from `at` on is `text`), or started again (`at` 0). */
 export interface ChatStreamDelta {

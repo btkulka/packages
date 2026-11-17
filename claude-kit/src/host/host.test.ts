@@ -161,6 +161,51 @@ describe("ChatHost", () => {
   });
 });
 
+describe("ChatHost limits", () => {
+  it("keeps chats to the host's modes, folder, and no past chats or terminal", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "claude-kit-"));
+    const { sdk, queries } = fakeSdk();
+    const home = mkdtempSync(join(tmpdir(), "claude-kit-home-"));
+    const host = new ChatHost({ sdk: async () => sdk, dataDir: dir, app: "test/0", folder: home, mode: "bypassPermissions", modes: ["acceptEdits", "plan"], pastChats: "none", terminal: false, lockFolder: true, intro: "Claude Code for this app.", verbosity: "conversational" });
+    try {
+      const s = host.state();
+      assert.deepEqual(s.limits, { modes: ["acceptEdits", "plan"], past: false, terminal: false });
+      assert.equal(s.intro, "Claude Code for this app.");
+      assert.equal(s.verbosity, "conversational");
+      // A default outside the list falls to the first allowed mode.
+      assert.equal(s.chats[0].mode, "acceptEdits");
+      assert.throws(() => host.configure(undefined, { mode: "bypassPermissions" }), /can't be put in bypassPermissions/);
+      assert.equal(host.configure(undefined, { mode: "plan" }).mode, "plan");
+      assert.deepEqual(await host.past(), { total: 0, chats: [] });
+      await assert.rejects(host.load("old"), /Past chats aren't open/);
+      assert.throws(() => host.terminal(), /isn't open here/);
+      // A screen asking for another folder still gets the host's.
+      assert.equal(host.newChat({ text: "x", folder: tmpdir() }).folder, home);
+      await host.send("hello");
+      await tick();
+      assert.equal(queries.at(-1)?.options.allowDangerouslySkipPermissions, false);
+      assert.equal(queries.at(-1)?.options.cwd, home);
+    } finally {
+      host.dispose();
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves everything open without limits", async () => {
+    const { host, queries, done } = setup();
+    try {
+      assert.deepEqual(host.state().limits, { modes: undefined, past: true, terminal: true });
+      assert.equal(host.configure(undefined, { mode: "bypassPermissions" }).mode, "bypassPermissions");
+      await host.send("hi");
+      await tick();
+      assert.equal(queries.at(-1)?.options.allowDangerouslySkipPermissions, true);
+    } finally {
+      done();
+    }
+  });
+});
+
 describe("httpHandler", () => {
   it("turns away a connection from another machine, even with Host: localhost", () => {
     const { host, done } = setup();

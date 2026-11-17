@@ -117,3 +117,28 @@ test("readDiscovery reads the file and rejects one without a token", () => {
   assert.equal(readDiscovery(bad), undefined);
   assert.equal(readDiscovery(join(dir, "missing.json")), undefined);
 });
+
+import { createProfileCache, requestPerson } from "./people.js";
+
+test("requestPerson: Benhäus's header from this PC, a remote session over Tailscale, or Ben at this PC", async () => {
+  const asked: string[] = [];
+  const client = {
+    people: {
+      profiles: async () => [{ id: "owner", name: "Ben", role: "owner" as const }, { id: "g_k1", name: "Kourtney", role: "guest" as const }],
+      whois: async (s: string) => (asked.push(s), s === "good" ? { id: "g_k1", name: "Kourtney", role: "guest" as const } : null),
+      updateProfile: async () => ({ id: "owner", name: "Ben", role: "owner" as const }),
+    },
+  };
+  const local = { remoteAddress: "127.0.0.1" };
+  const tailnet = { remoteAddress: "100.90.1.2" };
+  assert.deepEqual(await requestPerson({ socket: local, headers: { "x-benhaus-person": "g_k1" } }, client), { id: "g_k1", via: "remote" });
+  // The header means nothing from another machine: anyone could send it.
+  assert.equal(await requestPerson({ socket: tailnet, headers: { "x-benhaus-person": "owner" } }, client), undefined);
+  assert.deepEqual(await requestPerson({ socket: tailnet, headers: { cookie: "a=1; bh_remote=good" } }, client), { id: "g_k1", via: "session" });
+  await requestPerson({ socket: tailnet, headers: { cookie: "bh_remote=good" } }, client);
+  assert.deepEqual(asked, ["good"], "a known session isn't asked again");
+  assert.equal(await requestPerson({ socket: tailnet, headers: { cookie: "bh_remote=bad" } }, client), undefined);
+  assert.deepEqual(await requestPerson({ socket: local, headers: {} }, client), { id: "owner", via: "this-pc" });
+  const cache = createProfileCache(client);
+  assert.equal((await cache.get("g_k1"))?.name, "Kourtney");
+});

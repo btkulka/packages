@@ -1,0 +1,46 @@
+{
+  "name": "@btkulka/app-server",
+  "version": "0.1.0",
+  "description": "The one-process server Ben's web apps share: their JSON API and their page on one port, Vite in middleware mode in dev (hot reload on the same port) or the built dist/ in production, a second `npm run dev` attaching to the running copy (its log tailed) instead of fighting it, a cross-site write guard for an API with no login, a small router with JSON helpers and a typed HttpError, a console-plus-file log, and listening on this machine and its Tailscale address only, never the Wi-Fi, so phones come in through Benhäus's phone remote and its people. Vite and its plugins are handed in by the app.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "app-server"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/http-kit": "^0.1.0",
+    "@btkulka/proc-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

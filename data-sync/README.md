@@ -27,6 +27,7 @@ await serveOrAttach({
 });
 ```
 
+- **Where the pass-through listens.** `host`, one address or a list, should be wherever the app itself listens: an app on `@btkulka/app-server` passes `appHosts()` (127.0.0.1 and the Tailscale address) to both. Left out, it listens on every interface (`0.0.0.0`).
 - **The sync folder** is `BENHAUS_SYNC_DIR`, else `~/.benhaus-sync`: one Syncthing folder (`benhaus-data`) shared between Ben's machines over Tailscale only. Each app writes `<app>/snapshot.sql` there: a header line with the manifest (machine, time, rows, schema version, sha), then the SQL. A file whose sha doesn't match its body reads as missing.
 - **The verdict** compares each side with what it was when they last agreed (`<dbPath>.sync.json` keeps both shas): only here changed, push; only there changed, pull; both, hold. A machine with no database, or no rows, simply pulls, and never pushes: empty is never data. A snapshot with no rows never replaces rows here; this machine's copy is pushed over it.
 - **Newer code wins nothing by accident**: pass `schemaVersion` (the newest `user_version` the app's code knows) and a snapshot from newer code is never pulled; the app here needs updating first.

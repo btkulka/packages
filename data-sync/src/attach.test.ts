@@ -148,6 +148,24 @@ describe("serveOrAttach", () => {
     await close(mine);
   });
 
+  test("the proxy listens on every address the app does, and lets go of them all", { skip: process.platform === "darwin" }, async (t) => {
+    const port = await freePort();
+    const home = await fakeApp(otherMachine, port, servingHello("habits", "zagreus"));
+    t.after(() => close(home));
+    const r = await serveOrAttach({
+      app: "habits",
+      port,
+      host: ["127.0.0.1", "127.0.0.3"],
+      peers: [{ name: "zagreus", ip: otherMachine, os: "windows", online: true }],
+      serve: () => undefined,
+      log: () => {},
+    });
+    assert.equal(r.mode, "attached");
+    for (const ip of ["127.0.0.1", "127.0.0.3"]) assert.equal(await (await fetch(`http://${ip}:${port}/x`)).text(), `${otherMachine} says hi to GET /x`);
+    if (r.mode === "attached") await r.stop();
+    for (const ip of ["127.0.0.1", "127.0.0.3"]) await close(await fakeApp(ip, port, servingHello("habits", "macbook")));
+  });
+
   /** A sync folder that the history of each machine in `from` has reached. */
   function syncFolder(t: TestContext, from: string[] = []): string {
     const dir = mkdtempSync(join(tmpdir(), "data-sync-attach-"));

@@ -30,6 +30,23 @@ try { … } catch (e) {
 }
 ```
 
+
+## People: who a request is from
+
+Benhäus's Settings › People (Ben, and guests like Kourtney) is who uses Ben's apps. An app keeping track of who did what asks this package:
+
+```ts
+import { createBenhausClient, createProfileCache, requestPerson } from "@btkulka/benhaus-client";
+const benhaus = createBenhausClient();
+const who = await requestPerson(req, benhaus);  // { id: "owner" | "g_…", via, tools? } or undefined
+const profiles = createProfileCache(benhaus);    // names and pictures, read at most once a minute
+```
+
+- **Through Benhäus's phone remote**, the pass-through names the person in `X-Benhaus-Person` (`PERSON_HEADER`), after dropping any copy the phone sent. It's trusted only from a loopback socket.
+- **Straight over Tailscale**, the browser still sends the remote's session cookie (`bh_remote`, `REMOTE_COOKIE`), since cookies belong to the host whatever the port. `people.whois(session)` (MCP `phone_whois`) says whose it is, and for a guest, which tools they have. Answers are kept for five minutes.
+- **From this PC with neither** it's Ben (`owner`). Anything else is `undefined`.
+- `people.profiles()` (`people_profiles`) is everyone's id, name, role and picture, never a key. `people.updateProfile(id, { name, avatar })` (`update_profile`) sets a person's own name or picture, a data: URL under 300 KB.
+
 ## API
 
 ### `createBenhausClient(options?)`

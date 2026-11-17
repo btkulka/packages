@@ -1,0 +1,55 @@
+{
+  "name": "@btkulka/ui-kit",
+  "version": "0.1.0",
+  "description": "The controls Ben's web apps share, in React and themed by CSS variables: buttons (busy, two-tap confirm), checks that draw themselves, switches and switch rows, a segmented control with a sliding thumb, tiles, chips, tag input, a stepper with press-and-hold, text, search, token-completing and growing fields, a native select, a date strip, bottom sheets that follow a drag down (focus kept inside, keyboard-aware), context menus by long press, right-click or the menu key (popover or action sheet), toasts with Undo and a timer, swipeable rows, lists that unfold, fold and re-sort smoothly, a tab bar with a gliding pill, a page header with a slim sticky bar, disclosure, skeletons, banners, tags, avatars, rows, an icon renderer and an icon picker. Motion settles and never bounces; reduced motion turns it off. No runtime dependencies; React is a peer.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "ui-kit"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md",
+    "icon.svg"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs && node scripts/assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "typescript": "^5.6.0"
+  }
+}

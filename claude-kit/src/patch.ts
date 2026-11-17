@@ -54,7 +54,7 @@ export function applyChats(prev: ChatsState | undefined, p: ChatsPatch): ChatsSt
     if (!c) return undefined;
     chats.push(c);
   }
-  return { current: p.current, chats, models: p.models };
+  return { current: p.current, chats, models: p.models, limits: p.limits ?? prev?.limits, intro: p.intro ?? prev?.intro, verbosity: p.verbosity ?? prev?.verbosity };
 }
 
 /** A reply being written, grown by a delta; undefined when the delta starts past what this screen has (it missed one). */

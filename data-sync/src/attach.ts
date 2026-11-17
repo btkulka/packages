@@ -128,7 +128,10 @@ export async function findRunning(options: { app: string; port: number; local?: 
 }
 
 export interface Proxy {
+  /** The first address's server. */
   server: Server;
+  /** One per address it listens on. */
+  servers: Server[];
   /** Stop listening and drop every open connection (event streams included). */
   close(): Promise<void>;
 }
@@ -160,11 +163,37 @@ function tunnel(host: string, port: number, proxy: string | undefined, ready: (s
 }
 
 /**
- * Listen on `port` and pass every request (and WebSocket upgrade) through to `target` (through its tailnet's
- * proxy when it has one), answering HELLO_PATH itself as attached. The Benhäus tab, the phone and anything else
- * pointed at this machine's port keep working, with the other machine's data.
+ * Listen on `port` (at each of `host`'s addresses: the ones the app itself listens on) and pass every request
+ * (and WebSocket upgrade) through to `target` (through its tailnet's proxy when it has one), answering
+ * HELLO_PATH itself as attached. The Benhäus tab, the phone and anything else pointed at this machine's port
+ * keep working, with the other machine's data.
  */
-export function startProxy(options: { app: string; port: number; host?: string; target: Running; machine?: string }): Promise<Proxy> {
+export async function startProxy(options: { app: string; port: number; host?: string | string[]; target: Running; machine?: string }): Promise<Proxy> {
+  const hosts = Array.isArray(options.host) ? options.host : [options.host ?? "0.0.0.0"];
+  const servers: Server[] = [];
+  try {
+    for (const host of hosts.length ? hosts : ["0.0.0.0"]) servers.push(await proxyOn(options, host));
+  } catch (e) {
+    for (const s of servers) s.close();
+    throw e;
+  }
+  return {
+    server: servers[0],
+    servers,
+    close: () =>
+      Promise.all(
+        servers.map(
+          (s) =>
+            new Promise<void>((done) => {
+              s.close(() => done());
+              s.closeAllConnections();
+            }),
+        ),
+      ).then(() => undefined),
+  };
+}
+
+function proxyOn(options: { app: string; port: number; target: Running; machine?: string }, host: string): Promise<Server> {
   const { app, port, target } = options;
   const machine = options.machine ?? hostname();
   const startedAt = new Date().toISOString();
@@ -204,16 +233,9 @@ export function startProxy(options: { app: string; port: number; host?: string; 
 
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, options.host ?? "0.0.0.0", () => {
+    server.listen(port, host, () => {
       server.off("error", reject);
-      resolve({
-        server,
-        close: () =>
-          new Promise<void>((done) => {
-            server.close(() => done());
-            server.closeAllConnections();
-          }),
-      });
+      resolve(server);
     });
   });
 }
@@ -221,8 +243,11 @@ export function startProxy(options: { app: string; port: number; host?: string; 
 export interface ServeOrAttachOptions {
   app: string;
   port: number;
-  /** The address the app listens on, so the proxy listens the same way. Default every interface. */
-  host?: string;
+  /**
+   * The address(es) the app listens on, so the proxy listens the same way (@btkulka/app-server's appHosts():
+   * this machine and its Tailscale address). Default every interface.
+   */
+  host?: string | string[];
   machine?: string;
   /**
    * Start serving here: pull the newest snapshot (DataSync.prepare), open the database, listen on `port`.
