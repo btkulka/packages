@@ -28,6 +28,10 @@ export interface PlanOptions {
   budgetUsd?: number;
   /** GPUs per pod. Default 1. */
   count?: number;
+  /** Only this maker’s GPUs. Default NVIDIA (CUDA images); null for any. */
+  manufacturer?: string | null;
+  /** Include MIG slices (a fraction of a card’s compute, e.g. "MIG 2g.48gb"). Default false. */
+  includeMig?: boolean;
 }
 
 export interface Candidate {
@@ -68,6 +72,9 @@ export async function planRental(client: RunPodClient, o: PlanOptions = {}): Pro
     const gpus = await client.gpus({ cloud, minCudaVersion: o.minCudaVersion });
     const fit = gpus.filter((g) => {
       const p = priceOf(g, cloud);
+      const maker = o.manufacturer === undefined ? "NVIDIA" : o.manufacturer;
+      if (maker && (g.manufacturer ?? (/^NVIDIA/i.test(g.id) ? "NVIDIA" : "")).toUpperCase() !== maker.toUpperCase()) return false;
+      if (!o.includeMig && /\bMIG\b/i.test(`${g.id} ${g.name}`)) return false;
       return offered(g, cloud) && typeof p === "number" && p > 0 && g.memory >= minMemory && g.availability !== "NONE" && (o.maxPricePerHour === undefined || p <= o.maxPricePerHour);
     });
     const ordered = o.gpus?.length

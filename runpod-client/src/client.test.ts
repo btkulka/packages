@@ -110,6 +110,25 @@ test("rent skips a GPU with no machine free, names the pod, and terminate ends i
   await assert.rejects(rent(client, { name: "x", plan: { ...plan, ok: false, reason: "nope" }, image: "i", apiKey: "k" }), (e: unknown) => isRunPodError(e, "budget"));
 });
 
+test("planRental keeps NVIDIA cards only and skips MIG slices unless asked", async () => {
+  const live = {
+    gpus: [
+      { id: "AMD Instinct MI300X OAM", name: "MI300X", manufacturer: "AMD", memory: 192, community: true, price: { community: 0.5 }, availability: "LOW" },
+      { id: "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb", name: "RTX PRO 6000 MIG 2g.48gb", manufacturer: "NVIDIA", memory: 48, community: true, price: { community: 0.6 }, availability: "LOW" },
+      { id: "NVIDIA RTX A6000", name: "RTX A6000", manufacturer: "NVIDIA", memory: 48, community: true, price: { community: 0.69 }, availability: "LOW" },
+      { id: "NVIDIA A40", name: "A40", memory: 48, community: true, price: { community: 0.35 }, availability: "NONE" },
+    ],
+  };
+  const { fetchImpl } = fakeRunPod({ "GET /v2/catalog/gpus": () => ({ body: live }) });
+  const client = createRunPodClient({ apiKey: "k", fetch: fetchImpl });
+  const plan = await planRental(client, { minMemoryGb: 40, clouds: ["COMMUNITY"], budgetUsd: 5 });
+  assert.deepEqual(plan.candidates.map((c) => c.name), ["RTX A6000"], "AMD is out, the MIG slice is out, the A40 has no stock");
+  const withMig = await planRental(client, { minMemoryGb: 40, clouds: ["COMMUNITY"], budgetUsd: 5, includeMig: true });
+  assert.deepEqual(withMig.candidates.map((c) => c.name), ["RTX PRO 6000 MIG 2g.48gb", "RTX A6000"]);
+  const any = await planRental(client, { minMemoryGb: 40, clouds: ["COMMUNITY"], budgetUsd: 5, manufacturer: null });
+  assert.equal(any.candidates[0].name, "MI300X");
+});
+
 test("sweep ends only this package's pods", async () => {
   const deleted: string[] = [];
   const { fetchImpl } = fakeRunPod({
