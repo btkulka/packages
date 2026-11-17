@@ -92,14 +92,14 @@ export function resolveSwitches(prompt: ApiPrompt): void {
 }
 
 /** Keep only `outputId` and what it depends on. */
-export function prune(prompt: ApiPrompt, outputId: string): void {
+export function prune(prompt: ApiPrompt, outputIds: string | string[]): void {
   const keep = new Set<string>();
   const visit = (id: string) => {
     if (keep.has(id) || !prompt[id]) return;
     keep.add(id);
     for (const v of Object.values(prompt[id].inputs)) if (Array.isArray(v)) visit(String(v[0]));
   };
-  visit(outputId);
+  for (const id of Array.isArray(outputIds) ? outputIds : [outputIds]) visit(id);
   for (const id of Object.keys(prompt)) if (!keep.has(id)) delete prompt[id];
 }
 
@@ -127,7 +127,15 @@ export interface TrellisPromptOptions {
   savePrefix: string;
   /** The id of the save node added (default "trellis_save"). */
   saveId?: string;
+  /** Which model: TRELLIS.2 (default) or Pixal3D (TRELLIS.2 with pixel-aligned conditioning from MoGe depth). */
+  model?: "trellis2" | "pixal3d";
+  /** Also save the UV-textured mesh (base colour, metallic, roughness, occlusion and normal maps baked) as <savePrefix>-textured. */
+  textured?: boolean;
+  /** The baked textures' size (the template's "Texture Resolution", 4096 by default). */
+  textureSize?: number;
 }
+
+export const TEXTURED_SAVE_ID = "trellis_save_textured";
 
 /**
  * The TRELLIS.2 API prompt from the template: the Pixal3D/TRELLIS switches set to TRELLIS.2, the image and seed in,
@@ -137,7 +145,9 @@ export interface TrellisPromptOptions {
  */
 export function buildTrellisPrompt(template: UiWorkflow, info: ObjectInfo, o: TrellisPromptOptions): ApiPrompt {
   const prompt = toApi(template, info);
-  for (const [, n] of ofType(prompt, "PrimitiveBoolean")) n.inputs.value = true;
+  // The template's one boolean is "Switch to Trellis2": true is TRELLIS.2, false is Pixal3D.
+  for (const [, n] of ofType(prompt, "PrimitiveBoolean")) n.inputs.value = (o.model ?? "trellis2") === "trellis2";
+  if (o.textureSize) for (const [, n] of ofType(prompt, "PrimitiveInt")) if (typeof n.inputs.value === "number" && n.inputs.value >= 512) n.inputs.value = o.textureSize;
   resolveSwitches(prompt);
   for (const [, n] of ofType(prompt, "LoadImage")) n.inputs.image = o.imageName;
   for (const [, n] of ofType(prompt, "KSampler")) n.inputs.seed = o.seed;
@@ -150,7 +160,16 @@ export function buildTrellisPrompt(template: UiWorkflow, info: ObjectInfo, o: Tr
   if (!paint) throw new Error("The template has no PaintMesh node; is it ComfyUI's TRELLIS.2 template?");
   const saveId = o.saveId ?? "trellis_save";
   prompt[saveId] = { class_type: "SaveGLB", inputs: { mesh: [paint[0], 0], filename_prefix: o.savePrefix } };
-  prune(prompt, saveId);
+  const outputs = [saveId];
+  if (o.textured) {
+    // The textured mesh: ApplyTextureToMesh, then its normals smoothed (the template's last step before its own save).
+    const applied = ofType(prompt, "ApplyTextureToMesh")[0];
+    if (!applied) throw new Error("The template has no ApplyTextureToMesh node: no textured branch to save.");
+    const smoothed = Object.entries(prompt).find(([, n]) => n.class_type === "MeshSmoothNormals" && Array.isArray(n.inputs.mesh) && String((n.inputs.mesh as unknown[])[0]) === applied[0]);
+    prompt[TEXTURED_SAVE_ID] = { class_type: "SaveGLB", inputs: { mesh: [smoothed ? smoothed[0] : applied[0], 0], filename_prefix: `${o.savePrefix}-textured` } };
+    outputs.push(TEXTURED_SAVE_ID);
+  }
+  prune(prompt, outputs);
   return prompt;
 }
 

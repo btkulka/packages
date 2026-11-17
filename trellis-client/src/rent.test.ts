@@ -10,7 +10,7 @@ import type { RunPodClient } from "@btkulka/runpod-client";
 
 import { generate } from "./generate.js";
 import { bootScript, BOOT_CMD, COMFY_REV, PROXY_PY, RENT_TORCH, rentPlan } from "./rent.js";
-import { TRELLIS2_WEIGHTS } from "./weights.js";
+import { PIXAL3D_WEIGHTS, TRELLIS2_WEIGHTS } from "./weights.js";
 import type { ObjectInfo, UiWorkflow } from "./workflow.js";
 
 const has = (cmd: string, args: string[]) => spawnSync(cmd, args, { encoding: "utf8" }).status === 0;
@@ -19,7 +19,7 @@ test("the boot script is valid bash and does every step", () => {
   const s = bootScript();
   assert.match(s, /git fetch -q --depth 1 origin "\$COMFY_REV"/);
   assert.match(s, new RegExp(`torch==${RENT_TORCH.torch.replace(/\./g, "\\.")} torchvision==${RENT_TORCH.torchvision.replace(/\./g, "\\.")} --index-url ${RENT_TORCH.index}`));
-  for (const w of TRELLIS2_WEIGHTS) assert.ok(s.includes(`dl ${w.folder} ${w.file} ${w.repo} ${w.inRepo}`), w.file);
+  for (const w of [...TRELLIS2_WEIGHTS, ...PIXAL3D_WEIGHTS]) assert.ok(s.includes(`dl ${w.folder} ${w.file} ${w.repo} ${w.inRepo}`), w.file);
   assert.match(s, /sleep "\$\{RENT_DEADLINE_S:-2700\}"/, "the pod's own deadline");
   assert.match(s, /--listen 127\.0\.0\.1 --port 8189/, "ComfyUI only on localhost");
   assert.match(s, /step "ready"/);

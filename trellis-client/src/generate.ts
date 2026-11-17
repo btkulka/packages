@@ -40,6 +40,13 @@ export interface GenerateOptions {
   seed?: number;
   /** 'high' uses the full 1536 cascade, a 768 remesh and SDXL base concepts at 1024 px: better, slower, the most RAM. */
   quality?: "standard" | "high";
+  /** TRELLIS.2 (default) or Pixal3D (needs its weights: PIXAL3D_WEIGHTS). */
+  model?: "trellis2" | "pixal3d";
+  /** Also save the UV-textured mesh (4096 PBR maps by default) as <name>-textured.glb. */
+  textured?: boolean;
+  /** Cap on faces (default 250000; the template's own is 700000). */
+  maxFaces?: number;
+  textureSize?: number;
   resolution?: number;
   /** The concept model for a text prompt (default turbo, or base at quality high). */
   concept?: ConceptModel;
@@ -55,6 +62,8 @@ export interface GenerateOptions {
 
 export interface GenerateResult {
   glb: string;
+  /** The UV-textured mesh, when asked for. */
+  textured?: string;
   concept?: string;
   meta: string;
   seed: number;
@@ -121,7 +130,8 @@ async function fetchResult(c: Conn, comfyDir: string, remote: boolean, outputs: 
   }
   const leaf = stem.split("/").pop() ?? stem;
   const files = savedFiles(outputs, exts);
-  const f = files.find((x) => x.filename.includes(leaf)) ?? files[0];
+  // ComfyUI names a save <prefix>_00001_.ext: match the prefix exactly (drawer must not take drawer-textured).
+  const f = files.find((x) => x.filename.startsWith(`${leaf}_`)) ?? (files.length === 1 ? files[0] : undefined);
   if (!f) return false;
   await download(c, f, dest);
   return true;
@@ -229,12 +239,21 @@ export async function generate(env: TrellisEnv, o: GenerateOptions): Promise<Gen
     resolution: o.resolution ?? (high ? 1536 : 1024),
     remesh: high ? 768 : 512,
     savePrefix,
+    model: o.model,
+    textured: o.textured,
+    maxFaces: o.maxFaces,
+    textureSize: o.textureSize,
   });
   fs.writeFileSync(path.join(o.outDir, `${o.name}-prompt.json`), JSON.stringify(prompt, null, 1));
   const t = Date.now();
   const savedGlb = await run(c, prompt, "trellis", o.onProgress, o.pollS);
   const glb = path.join(o.outDir, `${o.name}.glb`);
   if (!(await fetchResult(c, r.comfyDir, remote, savedGlb, savePrefix, [".glb"], glb))) throw new TrellisError("no-output", "TRELLIS finished but no GLB was saved");
+  let textured: string | undefined;
+  if (o.textured) {
+    textured = path.join(o.outDir, `${o.name}-textured.glb`);
+    if (!(await fetchResult(c, r.comfyDir, remote, savedGlb, `${savePrefix}-textured`, [".glb"], textured))) textured = undefined;
+  }
   const secs = Math.round((Date.now() - t) / 1000);
   const meta = path.join(o.outDir, `${o.name}.meta.json`);
   fs.writeFileSync(
@@ -247,6 +266,9 @@ export async function generate(env: TrellisEnv, o: GenerateOptions): Promise<Gen
         prompt: o.prompt ?? null,
         resolution: o.resolution ?? (high ? 1536 : 1024),
         quality: o.quality ?? "standard",
+        model: o.model ?? "trellis2",
+        textured: !!textured,
+        maxFaces: o.maxFaces ?? 250000,
         template: typeof o.template === "string" ? o.template : o.template ? "(given)" : TRELLIS_TEMPLATE,
         secs,
         made: new Date().toISOString(),
@@ -256,5 +278,5 @@ export async function generate(env: TrellisEnv, o: GenerateOptions): Promise<Gen
       1,
     ),
   );
-  return { glb, concept, meta, seed, secs };
+  return { glb, textured, concept, meta, seed, secs };
 }

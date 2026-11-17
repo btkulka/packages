@@ -25,6 +25,12 @@ export const TRELLIS2_WEIGHTS: WeightFile[] = [
   { folder: "background_removal", file: "birefnet.safetensors", repo: "Comfy-Org/BiRefNet", inRepo: "background_removal/birefnet.safetensors", bytes: 0.44e9 },
 ];
 
+/** What Pixal3D adds to TRELLIS.2's set: its own model and MoGe (monocular geometry) for the pixel-aligned conditioning. */
+export const PIXAL3D_WEIGHTS: WeightFile[] = [
+  { folder: "diffusion_models", file: "pixal3d_int8_convrot.safetensors", repo: "Comfy-Org/Pixal3D", inRepo: "diffusion_models/pixal3d_int8_convrot.safetensors", bytes: 5.58e9 },
+  { folder: "geometry_estimation", file: "moge_2_vitl_normal_fp16.safetensors", repo: "Comfy-Org/MoGe", inRepo: "geometry_estimation/moge_2_vitl_normal_fp16.safetensors", bytes: 0.66e9 },
+];
+
 export interface WeightStatus {
   file: WeightFile;
   path: string;

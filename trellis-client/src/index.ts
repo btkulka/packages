@@ -1,6 +1,6 @@
 // @btkulka/trellis-client: TRELLIS.2 image-to-3D through a dedicated ComfyUI, and its GLB into OBJ files.
 
-export { TRELLIS2_WEIGHTS, checkWeights, downloadWeights, writeExtraModelPaths } from "./weights.js";
+export { TRELLIS2_WEIGHTS, PIXAL3D_WEIGHTS, checkWeights, downloadWeights, writeExtraModelPaths } from "./weights.js";
 export type { WeightFile, WeightStatus, DownloadOptions } from "./weights.js";
 
 export { TrellisError, resolveEnv, isUp, serve, stopServer, serverPid, watchMemoryFloor, threadBudget } from "./server.js";

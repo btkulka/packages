@@ -13,7 +13,7 @@ import path from "node:path";
 import { createRunPodClient, planRental, rent, waitForPodHttp, type Cloud, type Plan, type RunPodClient } from "@btkulka/runpod-client";
 
 import { generate, type GenerateResult } from "./generate.js";
-import { TRELLIS2_WEIGHTS } from "./weights.js";
+import { PIXAL3D_WEIGHTS, TRELLIS2_WEIGHTS } from "./weights.js";
 
 /** The ComfyUI commit the local 3D install runs (D:/tools/comfyui-3d, ComfyUI 0.45 with TRELLIS.2 in core). */
 export const COMFY_REV = "a592c0a654af22f75d97f214d6e3e34eb13cd9db";
@@ -62,7 +62,7 @@ web.run_app(app, host="0.0.0.0", port=${RENT_PORT}, print=None)
 
 /** The pod's start script: ComfyUI at COMFY_REV, torch for CUDA 13, the weights, ComfyUI on localhost, the proxy. */
 export function bootScript(): string {
-  const weights = TRELLIS2_WEIGHTS.map((w) => `dl ${w.folder} ${w.file} ${w.repo} ${w.inRepo}`).join("\n");
+  const weights = [...TRELLIS2_WEIGHTS, ...PIXAL3D_WEIGHTS].map((w) => `dl ${w.folder} ${w.file} ${w.repo} ${w.inRepo}`).join("\n");
   return `#!/bin/bash
 # Written by @btkulka/trellis-client (rent): ComfyUI with TRELLIS.2 on a rented GPU, behind a token.
 set -uo pipefail
@@ -84,7 +84,7 @@ python -c "import torch; assert torch.cuda.is_available(), 'no CUDA'; print('[re
 step "ComfyUI requirements"
 pip install -q --no-cache-dir -r requirements.txt || fail "requirements"
 
-step "TRELLIS.2 weights"
+step "TRELLIS.2 and Pixal3D weights"
 dl() { mkdir -p "models/$1"; curl -fsSL --retry 10 --retry-delay 3 -o "models/$1/$2" "https://huggingface.co/$3/resolve/main/$4" || fail "weights $2"; }
 ${weights}
 
@@ -117,6 +117,9 @@ export interface RentJob {
   name: string;
   seed?: number;
   quality?: "standard" | "high";
+  model?: "trellis2" | "pixal3d";
+  textured?: boolean;
+  maxFaces?: number;
 }
 
 export interface RentOptions {
@@ -230,10 +233,10 @@ export async function rentAndGenerate(o: RentOptions, signal?: AbortSignal): Pro
       try {
         const r = await generate(
           { comfyDir: "", url, headers, remote: true },
-          { image: job.image, name: job.name, outDir: o.outDir, seed: job.seed, quality: job.quality, onProgress: (stage, secs) => log(`  ${job.name}: ${stage}… ${secs}s`) },
+          { image: job.image, name: job.name, outDir: o.outDir, seed: job.seed, quality: job.quality, model: job.model, textured: job.textured, maxFaces: job.maxFaces, onProgress: (stage, secs) => log(`  ${job.name}: ${stage}… ${secs}s`) },
         );
         result.results.push(r);
-        log(`  ${job.name}: ${path.basename(r.glb)} in ${r.secs}s`);
+        log(`  ${job.name}: ${path.basename(r.glb)}${r.textured ? ` and ${path.basename(r.textured)}` : ""} in ${r.secs}s`);
       } catch (e) {
         result.failures.push({ name: job.name, error: (e as Error).message });
         log(`  ${job.name} failed: ${(e as Error).message}`);

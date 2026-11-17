@@ -30,6 +30,7 @@ const USAGE = `btkulka-trellis check|fetch|serve|stop|generate|obj
   generate (--image FILE | --prompt TEXT) --name NAME [--out DIR] [--quality high] [--seed N] [--resolution N] [--style TEXT]
   obj IN.glb OUT_PREFIX [--colors N] [--scale S]
   rent --image FILE [--name NAME] [--image FILE --name NAME …] [--out DIR] [--min-memory GB] [--minutes N] [--budget USD] [--yes]
+       [--model trellis2|pixal3d|both] [--quality high] [--textured] [--max-faces N]
        a GPU rented on RunPod by the minute: the plan and its worst-case cost print first; only --yes rents.
        The key: Benhäus credential ${RUNPOD_CREDENTIAL} (or env ${RUNPOD_KEY_ENV}).`;
 
@@ -46,6 +47,9 @@ function main(): Promise<number> {
       prompt: { type: "string" },
       name: { type: "string", multiple: true },
       "min-memory": { type: "string" },
+      model: { type: "string" },
+      textured: { type: "boolean" },
+      "max-faces": { type: "string" },
       minutes: { type: "string" },
       budget: { type: "string" },
       yes: { type: "boolean", short: "y" },
@@ -141,12 +145,20 @@ function main(): Promise<number> {
           return 2;
         }
         const names = values.name ?? [];
-        const jobs: RentJob[] = images.map((img, i) => ({
-          image: path.resolve(img),
-          name: names[i] ?? path.basename(img, path.extname(img)).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
-          seed: values.seed ? Number(values.seed) : undefined,
-          quality: values.quality === "high" ? "high" : "standard",
-        }));
+        const models: ("trellis2" | "pixal3d")[] = values.model === "both" ? ["trellis2", "pixal3d"] : [values.model === "pixal3d" ? "pixal3d" : "trellis2"];
+        const tag = { trellis2: "t2", pixal3d: "px" } as const;
+        const jobs: RentJob[] = images.flatMap((img, i) => {
+          const base = names[i] ?? path.basename(img, path.extname(img)).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+          return models.map((m) => ({
+            image: path.resolve(img),
+            name: models.length > 1 ? `${base}-${tag[m]}` : base,
+            seed: values.seed ? Number(values.seed) : undefined,
+            quality: values.quality === "high" ? ("high" as const) : ("standard" as const),
+            model: m,
+            textured: !!values.textured,
+            maxFaces: values["max-faces"] ? Number(values["max-faces"]) : undefined,
+          }));
+        });
         const apiKey = await loadRunPodKey({ app: "trellis-client" });
         if (!apiKey) {
           console.error(`No RunPod key. Add it in Benhäus › Settings › Credentials as ${RUNPOD_CREDENTIAL} (or set ${RUNPOD_KEY_ENV}).`);

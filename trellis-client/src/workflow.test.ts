@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildConceptPrompt, buildTrellisPrompt, checkpointName, prune, resolveSwitches, toApi, widgetInputs } from "./workflow.js";
+import { buildConceptPrompt, buildTrellisPrompt, checkpointName, prune, resolveSwitches, TEXTURED_SAVE_ID, toApi, widgetInputs } from "./workflow.js";
 import type { ApiPrompt, ObjectInfo, UiWorkflow } from "./workflow.js";
 
 const info: ObjectInfo = {
@@ -79,6 +79,37 @@ test("buildTrellisPrompt sets TRELLIS.2, the image, the seed, the cascade and a 
   assert.deepEqual(p.trellis_save, { class_type: "SaveGLB", inputs: { mesh: ["6", 0], filename_prefix: "3d/trellis/t" } });
   assert.equal(p["7"], undefined, "the template's Save3DAdvanced is pruned");
   assert.equal(p["2"], undefined, "the boolean is gone with its switch");
+});
+
+test("buildTrellisPrompt with model pixal3d takes the switch's false branch", () => {
+  const p = buildTrellisPrompt(template, info, { imageName: "up.png", seed: 1, savePrefix: "3d/t", model: "pixal3d" });
+  assert.deepEqual(p["5"].inputs.latent, ["1", 0], "false picks on_false (node 1)");
+  assert.equal(p["4"], undefined, "the TRELLIS.2 branch is pruned");
+});
+
+test("buildTrellisPrompt textured adds a second SaveGLB on the smoothed textured mesh, and sizes the textures", () => {
+  const texInfo: ObjectInfo = {
+    ...info,
+    PrimitiveInt: { input: { required: { value: ["INT"] } } },
+    ApplyTextureToMesh: { input: { required: { mesh: ["MESH"], size: ["INT"] } } },
+    MeshSmoothNormals: { input: { required: { mesh: ["MESH"] } } },
+  };
+  const tex: UiWorkflow = {
+    nodes: [
+      ...template.nodes,
+      { id: 9, type: "PrimitiveInt", widgets_values: [4096] },
+      { id: 10, type: "ApplyTextureToMesh", inputs: [{ name: "mesh", link: 8 }, { name: "size", link: 9 }] },
+      { id: 11, type: "MeshSmoothNormals", inputs: [{ name: "mesh", link: 10 }] },
+    ],
+    links: [...template.links, [8, 5, 0, 10, 0, "MESH"], [9, 9, 0, 10, 1, "INT"], [10, 10, 0, 11, 0, "MESH"]],
+  };
+  const plain = buildTrellisPrompt(tex, texInfo, { imageName: "up.png", seed: 1, savePrefix: "3d/t" });
+  assert.equal(plain[TEXTURED_SAVE_ID], undefined, "no textured save unless asked");
+  assert.equal(plain["10"], undefined, "and the texture branch is pruned");
+  const p = buildTrellisPrompt(tex, texInfo, { imageName: "up.png", seed: 1, savePrefix: "3d/t", textured: true, textureSize: 2048 });
+  assert.deepEqual(p[TEXTURED_SAVE_ID], { class_type: "SaveGLB", inputs: { mesh: ["11", 0], filename_prefix: "3d/t-textured" } });
+  assert.deepEqual(p.trellis_save.inputs.mesh, ["6", 0], "the painted mesh is still saved");
+  assert.equal(p["9"].inputs.value, 2048);
 });
 
 test("checkpointName finds a file in any subfolder", () => {
