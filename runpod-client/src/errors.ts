@@ -34,6 +34,7 @@ export class RunPodError extends Error {
 
 function categorize(code: string, status: number, message: string): RunPodErrorCategory {
   const m = `${code} ${message}`.toLowerCase();
+  if (status === 402) return "funds";
   if (code === "missing_api_key" || status === 401 || status === 403) return "auth";
   if (/insufficient (funds|balance|credit)|balance|payment|billing/.test(m)) return "funds";
   if (/no (longer any )?(instances?|machines?|capacity)|not available|unavailable|out of stock|no gpus? (are )?available|could not find|capacity/.test(m)) return "capacity";

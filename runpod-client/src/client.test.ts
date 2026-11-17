@@ -129,6 +129,37 @@ test("planRental keeps NVIDIA cards only and skips MIG slices unless asked", asy
   assert.equal(any.candidates[0].name, "MI300X");
 });
 
+test("rent follows the create-pod table: 403 skips, 5xx retries the same card, 402 stops at once", async () => {
+  const tried: string[] = [];
+  let flaky = 0;
+  const { fetchImpl } = fakeRunPod({
+    "GET /v2/catalog/gpus": () => ({ body: CATALOG }),
+    "POST /v2/pods": (c) => {
+      const gpu = (c.body as { gpu: { id: string } }).gpu.id;
+      tried.push(gpu);
+      if (gpu === "NVIDIA A40") return { status: 403, body: { detail: "no access to this pool" } };
+      if (gpu === "NVIDIA L40S" && flaky++ < 1) return { status: 503, body: { detail: "try again" } };
+      return { status: 201, body: { id: "p9", name: "x", status: "PROVISIONING" } };
+    },
+    "DELETE /v2/pods/{id}": () => ({ status: 204 }),
+  });
+  const client = createRunPodClient({ apiKey: "k", fetch: fetchImpl });
+  const plan = await planRental(client, { minMemoryGb: 40, maxMinutes: 30, budgetUsd: 5, clouds: ["COMMUNITY"] });
+  const r = await rent(client, { name: "t", plan, image: "i", apiKey: "k", logDir: process.env.TEMP ?? "/tmp" });
+  assert.deepEqual(tried, ["NVIDIA A40", "NVIDIA L40S", "NVIDIA L40S"]);
+  assert.equal(r.candidate.name, "L40S");
+  await r.terminate();
+
+  const broke = fakeRunPod({
+    "GET /v2/catalog/gpus": () => ({ body: CATALOG }),
+    "POST /v2/pods": () => ({ status: 402, body: { detail: "insufficient balance" } }),
+  });
+  const poor = createRunPodClient({ apiKey: "k", fetch: broke.fetchImpl });
+  const plan2 = await planRental(poor, { minMemoryGb: 40, budgetUsd: 5, clouds: ["COMMUNITY"] });
+  await assert.rejects(rent(poor, { name: "t", plan: plan2, image: "i", apiKey: "k" }), (e: unknown) => isRunPodError(e, "funds") && /Add credit/.test((e as Error).message));
+  assert.equal(broke.calls.filter((c) => c.method === "POST").length, 1, "402 stops at the first card");
+});
+
 test("sweep ends only this package's pods", async () => {
   const deleted: string[] = [];
   const { fetchImpl } = fakeRunPod({

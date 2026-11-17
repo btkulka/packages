@@ -159,17 +159,27 @@ export async function rent(client: RunPodClient, o: RentOptions): Promise<Rental
       cloud: c.cloud,
       gpu: { id: c.gpu, count: o.count ?? 1, ...(o.minCudaVersion ? { minCudaVersion: o.minCudaVersion } : {}) },
     };
-    let pod: Pod;
-    try {
-      pod = await client.createPod(body);
-    } catch (e) {
-      lastErr = e;
-      if (isRunPodError(e, "capacity") || (isRunPodError(e, "request") && /gpu|cuda|machine|instance|available/i.test((e as Error).message))) {
-        o.onLog?.(`${c.name} (${c.cloud.toLowerCase()}) has no machine free: trying the next.`);
-        continue;
+    // What each failure means, from the v2 spec's create-pod table: 422 fix the request; 400 this GPU and data
+    // center couldn't be placed (or a cross-field rule), try the next; 402 no balance, stop; 403 no access to that
+    // pool, skip it; 429 back off and retry; 5xx retry the same with backoff.
+    let pod: Pod | undefined;
+    let next = false;
+    for (let attempt = 0; attempt < 4 && !pod && !next; attempt++) {
+      try {
+        pod = await client.createPod(body);
+      } catch (e) {
+        lastErr = e;
+        const status = e instanceof RunPodError ? e.status : 0;
+        if (status === 402) throw new RunPodError("insufficient_balance", 402, "The Runpod account has no balance for this. Add credit in the Runpod console › Billing, then run it again.", (e as RunPodError).body, "funds");
+        if (status === 400 || status === 403 || isRunPodError(e, "capacity")) {
+          o.onLog?.(`${c.name} (${c.cloud.toLowerCase()}) couldn't be placed${status === 403 ? " (no access to that pool)" : ""}: trying the next.`);
+          next = true;
+        } else if (status === 429 || status >= 500 || status === 0) {
+          await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+        } else throw e;
       }
-      throw e;
     }
+    if (!pod) continue;
     const startedAt = Date.now();
     const deadline = startedAt + o.plan.maxMinutes * 60_000;
     const watchdog = spawnWatchdog(pod.id, deadline, o.apiKey, o.logDir);
