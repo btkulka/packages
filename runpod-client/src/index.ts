@@ -6,4 +6,4 @@ export { RunPodError, isRunPodError } from "./errors.js";
 export type { RunPodErrorCategory } from "./errors.js";
 export { planRental, rent, sweep, spawnWatchdog, waitForPodHttp, POD_PREFIX, WATCHDOG_SCRIPT } from "./rental.js";
 export type { Plan, PlanOptions, Candidate, Rental, RentOptions } from "./rental.js";
-export { loadRunPodKey, DEFAULT_CREDENTIAL, KEY_ENV } from "./key.js";
+export { loadRunPodKey, readCliConfigKey, DEFAULT_CREDENTIAL, KEY_ENV, CLI_CONFIG } from "./key.js";

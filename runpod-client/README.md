@@ -4,7 +4,7 @@ Rent a GPU by the minute on [RunPod](https://www.runpod.io), guarded so a forgot
 
 - **RunPod's REST API v2** (`https://api.runpod.io/v2`; v1 at rest.runpod.io was retired on Nov 15 2026): the GPU catalog with per-cloud prices, and pods (create, read, list, logs, run a command, stop, terminate).
 - **A guarded rental on top:** a plan and its worst-case cost before anything is spent, a budget it won't exceed, a hard deadline, and three ways a pod ends: the caller's `terminate()`, a **detached watchdog** process that terminates it at the deadline even if the caller crashed or the terminal closed, and (for scripts that use it) the pod's own timer.
-- **The key** from Benhäus › Settings › Credentials (`runpod/shared`, declared in this package's `benhaus.credential`, so the credential form, its docs link and its Test come from here), with `RUNPOD_API_KEY` as the fallback.
+- **The key**, from the first place that has one: Benhäus › Settings › Credentials (`runpod/shared`, declared in this package’s `benhaus.credential`, so the credential form, its docs link and its Test come from here), then `RUNPOD_API_KEY`, then the Runpod CLI’s `~/.runpod/config.toml` (written by `runpod login --agent`, the email sign-in in [Runpod’s agent guide](https://agents.runpod.io/)). It is never printed.
 - Node only, ESM and CommonJS. Depends on http-kit, proc-kit and benhaus-client.
 
 ```json
