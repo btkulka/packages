@@ -13,7 +13,7 @@
   "benhaus": {
     "credential": {
       "label": "RunPod (rented GPUs)",
-      "docs": "https://www.runpod.io/console/user/settings",
+      "docs": "https://docs.runpod.io/get-started/api-keys",
       "fields": [
         {
           "name": "apiKey",
@@ -35,11 +35,11 @@
         "hints": [
           {
             "status": 401,
-            "message": "RunPod doesn't know this key. Make one in RunPod › Settings › API Keys (read and write, so it can start and stop pods) and paste it again."
+            "message": "RunPod doesn’t know this key. Make one in the RunPod console › Settings › API Keys › Create API Key (Restricted: Account read, Catalog read, Pods read and write) and paste it again."
           },
           {
             "status": 403,
-            "message": "The key can't read the account: give it read and write access to pods in RunPod › Settings › API Keys."
+            "message": "The key works but can’t do this: edit it in RunPod › Settings › API Keys and give it Account read, Catalog read and Pods read and write (or make it All)."
           }
         ]
       }

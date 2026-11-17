@@ -14,7 +14,7 @@ Rent a GPU by the minute on [RunPod](https://www.runpod.io), guarded so a forgot
 ## Getting a key
 
 1. Make a RunPod account and add credit (it's prepaid; a 48 GB card runs about $0.35 to $0.80 an hour on Community Cloud, Nov 2026).
-2. RunPod › Settings › API Keys › Create: read and write (it has to start and stop pods).
+2. RunPod console › Settings › API Keys › Create API Key: a name (benhaus), **Restricted**, then Account: Read, Catalog: Read, Pods: Read/Write, the rest None. That is all this package calls (account:read, catalog:read, pods:read and pods:write); a key with All works too.
 3. Benhäus › Settings › Credentials › Add › RunPod (rented GPUs), id `runpod/shared`, paste the key, Test.
 
 `btkulka-runpod account` then says whose account it is.
