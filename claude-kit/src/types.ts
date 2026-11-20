@@ -1,6 +1,10 @@
 // The chat's shapes, shared by the host (Node), the transports and the screens.
 // No Node and no DOM here: every entry point imports these.
 
+import type { ChatBlock, RawAnswer } from "@btkulka/chat-blocks";
+
+export type { BlockAnswer, BlockSpec, BlockState, ChatBlock, RawAnswer } from "@btkulka/chat-blocks";
+
 /**
  * How Claude asks before acting: default asks before edits and commands,
  * acceptEdits makes edits without asking, auto lets a classifier decide (and
@@ -36,7 +40,7 @@ export type NewChatFile = { path: string; name?: string } | { data: string; name
 export type ChatItem =
   | { kind: "you"; id: string; text: string; images?: ChatImage[]; files?: ChatFile[] }
   | { kind: "claude"; id: string; text: string }
-  | { kind: "tool"; id: string; name: string; detail?: string; state: "running" | "done" | "error"; result?: string; images?: ChatImage[] }
+  | { kind: "tool"; id: string; name: string; detail?: string; state: "running" | "done" | "error"; result?: string; images?: ChatImage[]; block?: ChatBlock }
   | { kind: "note"; id: string; text: string; error?: boolean };
 
 /** Something Claude wants to do that its mode doesn't allow by itself, waiting for an answer. */
@@ -50,6 +54,24 @@ export interface ChatAsk {
   detail?: string;
   /** Claude Code offers a rule so it won't ask again this session. */
   canAlways: boolean;
+}
+
+/** Work Claude started in the background and carries on past (a command, an agent, a workflow, a monitor): going, or just ended. */
+export interface ChatJob {
+  /** Claude Code's task id. */
+  id: string;
+  /** What runs it, as Claude Code says: local_bash, local_agent, local_workflow, monitor, mcp_task… */
+  kind: string;
+  /** An agent's type ("general-purpose", "Explore"). */
+  agent?: string;
+  /** What it's doing ("Build the app"). */
+  title: string;
+  /** Its latest progress: an agent's summary or the tool it last used; once it ends, how it went. */
+  line?: string;
+  /** When it started (ms since 1970), for how long it's been going. */
+  since: number;
+  /** How it ended, for the moment it stays shown after. */
+  ended?: "completed" | "failed" | "stopped";
 }
 
 /** A chat: its own standing Claude Code session that the host keeps. */
@@ -71,9 +93,13 @@ export interface ChatState {
   mode: ClaudeMode;
   items: ChatItem[];
   asks: ChatAsk[];
+  /** Blocks waiting for an answer (await_feedback, AskUserQuestion): their tool rows draw them, and these answer. */
+  blocks?: ChatBlock[];
   error?: string;
   /** What the turn is doing besides writing ("Retrying, attempt 2 of 10"). */
   activity?: string;
+  /** Background jobs its session is running (and ones that just ended, for a moment). Its session isn't let go while one runs. */
+  jobs?: ChatJob[];
 }
 
 /**
@@ -139,6 +165,19 @@ export interface ChatStreamDelta {
   text: string;
 }
 
+/** A slash command a chat's session takes (a skill, a plugin's, one of Claude Code's own): typing / lists them. */
+export interface ChatCommand {
+  /** Without the slash. */
+  name: string;
+  description: string;
+  /** What goes after it ("<file>"), when it takes something. */
+  hint?: string;
+  /** Other names it answers to. */
+  aliases?: string[];
+  /** One of Claude Code's own, not a skill, a plugin's or an MCP server's. */
+  builtin?: boolean;
+}
+
 /** A conversation Claude Code kept on this machine: Past chats picks one back up as a chat. */
 export interface PastChat {
   sessionId: string;
@@ -161,6 +200,13 @@ export interface NewChatOptions {
   folder?: string;
 }
 
+/** What configure changes on one chat: only what's given. */
+export interface ChatSettings {
+  mode?: ClaudeMode;
+  model?: string;
+  title?: string;
+}
+
 export type AskDecision = "allow" | "always" | "deny";
 export type ThumbSize = "md" | "lg";
 
@@ -169,6 +215,21 @@ export interface ImageBytesOut {
   bytes: Uint8Array;
   type: string;
   name: string;
+}
+
+/** A file an app block's page asked for (a model, its textures): read back for the page. */
+export interface FileBytesOut {
+  bytes: Uint8Array;
+  type: string;
+  name: string;
+  size: number;
+}
+
+/** An app block's page, ready for a sandboxed iframe's srcdoc. */
+export interface AppPage {
+  html: string;
+  /** It asked for a border of its own (resource _meta.ui.prefersBorder). */
+  prefersBorder?: boolean;
 }
 
 /** The events a host sends its screens. */
@@ -199,9 +260,24 @@ export interface ClaudeTransport {
   select(chat: string): Promise<ChatsState>;
   close(chat: string): Promise<ChatsState>;
   answer(id: string, decision: AskDecision): Promise<ChatState>;
+  /** Answers a waiting block (its id is its tool call's): with its value, or words. Without it, blocks are drawn but can't be answered here. */
+  reply?(id: string, answer: RawAnswer): Promise<ChatState>;
+  /** An app block's page (an MCP Apps ui:// resource its app's server serves), read through the chat's session, its policy in place. */
+  appPage?(chat: string, app: string, uri: string): Promise<AppPage>;
+  /** A file an app block's page asked for: one its props name, or one in that file's folder (a model's textures, a set's parts). Refused for anything else. */
+  file?(chat: string, block: string, ref: string): Promise<FileBytesOut>;
+  /**
+   * Stars on files (Benhäus: Gallery's star): `on` true stars them, false unstars them, left out only asks.
+   * Resolves with whether each is starred now. A carousel's cards and an app block's page (files its props
+   * name) show a star with it; without it, neither does.
+   */
+  star?(refs: string[], on?: boolean): Promise<boolean[]>;
   /** The chat's conversation in Claude Code in a terminal; it picks back up from the transcript at its next message. */
   terminal?(chat?: string): Promise<{ folder: string; command: string }>;
-  configure(chat: string, o: { mode?: ClaudeMode; model?: string }): Promise<ChatState>;
+  /** A chat's mode, model or name (`title`; blank names it for its first message again). */
+  configure(chat: string, o: ChatSettings): Promise<ChatState>;
+  /** The slash commands the chat's session takes, for the box's / menu (it starts the session if it isn't up). Absent: no menu. */
+  commands?(chat?: string): Promise<ChatCommand[]>;
   past(query?: string, limit?: number): Promise<{ total: number; chats: PastChat[] }>;
   load(sessionId: string): Promise<ChatsState>;
   onList(cb: (p: ChatsPatch) => void): () => void;

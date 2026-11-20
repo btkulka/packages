@@ -5,8 +5,17 @@
 // and "/http" + "/client", the screens "/react" and "/element".
 
 export type {
+  AppPage,
   AskDecision,
+  BlockAnswer,
+  BlockSpec,
+  BlockState,
+  ChatBlock,
+  RawAnswer,
   ChatAsk,
+  ChatCommand,
+  ChatJob,
+  ChatSettings,
   ChatImage,
   ChatItem,
   ChatPatch,
@@ -17,6 +26,7 @@ export type {
   ClaudeEvent,
   ClaudeMode,
   ClaudeTransport,
+  FileBytesOut,
   ImageBytesOut,
   ChatFile,
   NewChatFile,

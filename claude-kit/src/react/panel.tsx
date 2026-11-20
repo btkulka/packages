@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { ChatsState, ChatState } from "../types.js";
 import { chatWord, modelName } from "../words.js";
 import { useClaude, useStore, useTransport, useUi, type ClaudeUi, type Where } from "./context.js";
-import { ChatStrip, ChatView, forgetClosed } from "./chat.js";
+import { ChatStrip, ChatView, forgetClosed, NameField, renameChat, useRenaming } from "./chat.js";
 import { MenuButton } from "./menu.js";
 import { PastChats } from "./past.js";
 import { ClaudeMark, HistoryIcon, MoreIcon, PlusIcon, XIcon, type MenuItem } from "./primitives.js";
@@ -23,6 +23,7 @@ function panelMenu(chat: ChatState, models: ChatsState["models"], where: Where, 
           ...(limits?.past === false ? [] : [{ id: "past", label: "Past chats", icon: "search" }]),
         ]
       : []),
+    { id: "rename", label: "Rename chat" },
     { id: "close", label: "Close chat", icon: "close" },
     ...(t.terminal && !ui.phone && limits?.terminal !== false ? [{ id: "terminal", label: "Continue in terminal", icon: "terminal" }] : []),
     {
@@ -43,6 +44,7 @@ function onPanelMenu(item: MenuItem, chat: ChatState, where: Where, t: ClaudeTra
   }
   if (item.id === "new") return (store.setPast(false), void t.newChat().catch(fail));
   if (item.id === "past") return store.setPast(true);
+  if (item.id === "rename") return (store.setPast(false), renameChat(chat.id));
   if (item.id === "close") return void t.close(chat.id).catch(fail);
   if (item.id === "terminal" && t.terminal) return void t.terminal(chat.id).then((r) => ui.toast(`Claude Code is opening in a terminal in ${ui.showPath(r.folder)}.`), fail);
   ui.onMenu?.(item, chat, where);
@@ -74,6 +76,7 @@ export function ClaudePanel({ hidden = [], onHide, className, mark }: { hidden?:
   const { Tooltip } = ui.c;
   const list = useClaude((s) => s.chats);
   const past = useClaude((s) => s.past);
+  const named = useRenaming();
 
   // Chats drawn elsewhere aren't the panel's: it shows another one, or a new one once every chat is elsewhere.
   const free = list?.chats.filter((c) => !hidden.includes(c.id)) ?? [];
@@ -145,7 +148,8 @@ export function ClaudePanel({ hidden = [], onHide, className, mark }: { hidden?:
         <PastChats />
       ) : (
         <>
-          {free.length > 1 && <ChatStrip list={{ ...list, chats: free }} />}
+          {/* One chat has no chips, except while it's being named (⋯ › Rename chat). */}
+          {(free.length > 1 || free.some((c) => c.id === named)) && <ChatStrip list={{ ...list, chats: free }} />}
           <ChatView key={chat.id} chat={chat} where="panel" onHide={onHide} />
         </>
       )}
@@ -161,6 +165,7 @@ export function ClaudePanel({ hidden = [], onHide, className, mark }: { hidden?:
 export function ClaudeChat({ id, where = "tab", className, mark, gone }: { id?: string; where?: Where; className?: string; mark?: ReactNode; gone?: ReactNode }) {
   const list = useClaude((s) => s.chats);
   const ui = useUi();
+  const named = useRenaming();
   const chat = list?.chats.find((c) => c.id === (id ?? list.current));
   const cls = ["ck-root ck-page", className].filter(Boolean).join(" ");
 
@@ -185,7 +190,13 @@ export function ClaudeChat({ id, where = "tab", className, mark, gone }: { id?: 
       <header className="ck-head ck-page__head">
         {mark ?? <ClaudeMark size={22} />}
         <span className="ck-col ck-grow">
-          <span className="ck-headline ck-where">{chat.title}</span>
+          {named === chat.id ? (
+            <NameField chat={chat} className="ck-headline" />
+          ) : (
+            <span className="ck-headline ck-where" title="Double-click to rename" onDoubleClick={() => renameChat(chat.id)}>
+              {chat.title}
+            </span>
+          )}
           <span className="ck-caption ck-ink3 ck-where" title={ui.showPath(chat.folder)}>
             {ui.showPath(chat.folder)} · {modelName(chat, list.models)}
           </span>

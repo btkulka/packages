@@ -1,5 +1,5 @@
 import { asBytes } from "../bytes.js";
-import type { ChatPatch, ChatsPatch, ChatStreamDelta, ClaudeTransport, ImageBytesOut } from "../types.js";
+import type { ChatPatch, ChatsPatch, ChatStreamDelta, ClaudeTransport, FileBytesOut, ImageBytesOut } from "../types.js";
 
 // @btkulka/claude-kit/electron/preload: the IPC channels of ./main as a
 // ClaudeTransport, to expose to the page:
@@ -49,8 +49,12 @@ export function claudeBridge(ipcRenderer: IpcRendererLike, o: { prefix?: string;
     select: call("select"),
     close: call("close"),
     answer: call("answer"),
+    reply: call("reply"),
+    appPage: call("appPage"),
+    file: (...args: unknown[]) => (call<FileBytesOut>("file")(...args) as Promise<FileBytesOut>).then((r) => ({ ...r, bytes: asBytes(r.bytes) })),
     terminal: call("terminal"),
     configure: call("configure"),
+    commands: call("commands"),
     past: call("past"),
     load: call("load"),
     onList: on<ChatsPatch>("chats"),

@@ -90,6 +90,7 @@ const server = createToolServer({
 });
 ```
 
+- **`resources: ResourceSpec[]`** (optional): `{ uri, name, title?, description?, mimeType?, _meta?, read() }`, served on resources/list and resources/read, with the resources capability declared for you. `read()` gives `{ text }` or `{ blob }` (base64), and its own `mimeType` and `_meta`. That's how an app serves its block page (an MCP Apps `ui://` resource, made with [chat-blocks](../chat-blocks)' `blockPage` and `blockResource`). Leave it out to add your own resource handlers.
 - **`tools: ToolSpec[]`**: `{ name, description?, inputSchema, run?, …anything else }`. tools/list sends each spec minus `run`, exactly as written (title, annotations, outputSchema pass through). Read once, at creation. If two share a name, the first is called.
 - **`run(args, ctx)`** returns data (sent through `format`, by default `toResult`: JSON with indent 2, `undefined` as `{"ok": true}`) or a ready result (`text(…)`, `json(…, 0)`, `{ content: [...] }`), sent as it is. `args` is `{}` when the call had none.
 - **`call(name, args, ctx)`**: the handler for tools without `run`. Plug in an app's existing switch or router as it is.

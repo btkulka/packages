@@ -1,5 +1,5 @@
-// The Gemini API (Google AI Studio) as Ben's apps call it: an API key in, the models list and video
-// generation. Built on @btkulka/http-kit: a per-attempt timeout, the caller's AbortSignal, a 429 that
+// The Gemini API (Google AI Studio) as Ben's apps call it: an API key in, the models list, video
+// generation and image generation. Built on @btkulka/http-kit: a per-attempt timeout, the caller's AbortSignal, a 429 that
 // waits out Retry-After, a 5xx or a dropped connection that backs off, an abort or another 4xx never
 // retried. Browser-safe: no node:*, no Buffer.
 
@@ -7,6 +7,7 @@ import { HttpError, defaultFetch, isRetryable, retry, send, sendWith, withQuery,
 import type { Bytes, Call, CallInit, Transport } from "./call.js";
 import { GeminiAuthError, GeminiError, geminiError, invalid, redactKey, wrap } from "./errors.js";
 import { modelsApi, type ModelsApi } from "./models.js";
+import { imageApi, type ImageApi } from "./image.js";
 import { videoApi, type VideoApi } from "./video.js";
 
 export const GEMINI_API_URL = "https://generativelanguage.googleapis.com";
@@ -43,6 +44,7 @@ export interface GeminiClientOptions {
 export interface GeminiClient {
   models: ModelsApi;
   video: VideoApi;
+  image: ImageApi;
 }
 
 /**
@@ -55,8 +57,12 @@ export function retryable(err: unknown): boolean {
   return isRetryable(err);
 }
 
-/** A 429 Google refused outright: nothing was started, so trying again can't start two. */
-const refused = (err: unknown) => retryable(err) && err instanceof HttpError && err.status === 429;
+/**
+ * What Google turned away before doing anything, so trying again can't start two: a 429, and a 503 (UNAVAILABLE,
+ * "experiencing high demand"), which Nano Banana Pro answers often at busy times. Other 5xx and timeouts are not
+ * retried for paid calls: the work may have started.
+ */
+const refused = (err: unknown) => retryable(err) && err instanceof HttpError && (err.status === 429 || err.status === 503);
 
 export function createGeminiClient(options: GeminiClientOptions): GeminiClient {
   const apiKey = (options.apiKey ?? "").trim();
@@ -125,7 +131,7 @@ export function createGeminiClient(options: GeminiClientOptions): GeminiClient {
   };
 
   const transport: Transport = { call, bytes, root };
-  return { models: modelsApi(transport), video: videoApi(transport) };
+  return { models: modelsApi(transport), video: videoApi(transport), image: imageApi(transport) };
 }
 
 function parseJson(text: string): unknown {

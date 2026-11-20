@@ -8,7 +8,7 @@ export { createLogger, type Log, type LoggerOptions } from "./log.js";
 export { error, errorMessage, image, isToolResult, json, jsonError, text, toResult } from "./results.js";
 export { runMain, serveStdio, type Connectable, type StdioHandle, type StdioOptions } from "./stdio.js";
 export { connectInMemory } from "./testing.js";
-export { createToolServer, listTools, type RequestExtra, type ToolContext, type ToolServerOptions, type ToolSpec } from "./tool-server.js";
+export { createToolServer, listTools, type RequestExtra, type ResourceContents, type ResourceSpec, type ToolContext, type ToolServerOptions, type ToolSpec } from "./tool-server.js";
 export { installParentWatchdog, pidAlive, type WatchdogOptions } from "./watchdog.js";
 
 // One SDK and one zod for every app. Import these from here, not from the apps'

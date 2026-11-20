@@ -71,8 +71,21 @@ export function httpTransport(base = "/claude"): ClaudeTransport {
     select: (chat) => rpc("select", chat),
     close: (chat) => rpc("close", chat),
     answer: (id, decision) => rpc("answer", id, decision),
+    reply: (id, a) => rpc("reply", id, a),
+    appPage: (chat, app, uri) => rpc("appPage", chat, app, uri),
+    file: async (chat, block, ref) => {
+      const res = await fetch(`${root}/file?${new URLSearchParams({ chat, block, ref })}`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => undefined)) as { error?: string } | undefined;
+        throw new Error(body?.error ?? `That file didn't load (${res.status}).`);
+      }
+      const name = decodeURIComponent(/filename="([^"]*)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "file");
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      return { bytes, type: res.headers.get("content-type") ?? "application/octet-stream", name, size: bytes.length };
+    },
     terminal: (chat) => rpc("terminal", chat),
     configure: (chat, o) => rpc("configure", chat, o),
+    commands: (chat) => rpc("commands", chat),
     past: (query, limit) => rpc("past", query, limit),
     load: (sessionId) => rpc("load", sessionId),
     onList: on<ChatsPatch>("chats"),

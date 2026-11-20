@@ -1,0 +1,38 @@
+/* @btkulka/chat-blocks: the base of an app's block page (page.ts inlines it
+   with frame.css and the bridge). A claude-kit chat puts its own --ck-*
+   values on the page (the bridge sets them on <html>, which wins over these);
+   in another MCP Apps host (Claude Desktop) they come from the spec's standard
+   variables, with the chat's dark look as the last fallback. */
+
+:root {
+  --ck-ink: var(--color-text-primary, #f5f5f7);
+  --ck-ink-2: var(--color-text-secondary, #a8a8ad);
+  --ck-ink-3: var(--color-text-tertiary, #8b8b91);
+  --ck-surface: var(--color-background-primary, #121214);
+  --ck-surface-2: var(--color-background-secondary, #161618);
+  --ck-surface-3: var(--color-background-tertiary, #212124);
+  --ck-stroke: var(--color-border-secondary, rgba(255, 255, 255, 0.08));
+  --ck-stroke-strong: var(--color-border-primary, rgba(255, 255, 255, 0.16));
+  --ck-field: var(--color-background-secondary, #1c1c1f);
+  --ck-field-border: var(--color-border-primary, #68686f);
+  --ck-selected: #17224a;
+  --ck-selected-border: rgba(124, 150, 255, 0.35);
+  --ck-picked: #7c96ff;
+  --ck-picked-ink: #0d1330;
+  --ck-accent: #e2bd68;
+  --ck-accent-ink: #1d1d1f;
+  --ck-focus: var(--color-ring-primary, var(--ck-accent));
+  --ck-live: var(--color-text-info, #7cb8ff);
+  --ck-alert: var(--color-text-danger, #ff8a5c);
+  --ck-font: var(--font-sans, "Inter", -apple-system, "Segoe UI", system-ui, sans-serif);
+  --ck-mono: var(--font-mono, ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace);
+  --ck-radius: var(--border-radius-md, 10px);
+  --ck-quick: 160ms;
+  --ck-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+html, body { margin: 0; padding: 0; background: transparent; }
+body { font: 400 13px/18px var(--ck-font); color: var(--ck-ink); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+*, *::before, *::after { box-sizing: border-box; }
+img { max-width: 100%; }

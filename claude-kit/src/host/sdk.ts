@@ -39,12 +39,26 @@ export interface CanUseToolOptions {
 
 export type CanUseToolLike = (tool: string, input: Record<string, unknown>, o: CanUseToolOptions) => Promise<PermissionResultLike>;
 
+/** A slash command as the SDK lists it (supportedCommands(), the commands_changed message). */
+export interface SlashCommandLike {
+  name: string;
+  description: string;
+  argumentHint: string;
+  aliases?: string[];
+  /** Claude Code's own: when a row like it shares its name, /name runs this one. */
+  builtin?: boolean;
+}
+
 export interface QueryLike extends AsyncIterable<SdkMessage> {
   interrupt(): Promise<void>;
   close(): void;
   setPermissionMode(mode: string): Promise<void>;
   setModel(model?: string): Promise<void>;
-  initializationResult(): Promise<{ models: { value: string; displayName: string }[] }>;
+  initializationResult(): Promise<{ models: { value: string; displayName: string }[]; commands?: SlashCommandLike[] }>;
+  /** The slash commands the session takes, as it last said (older SDKs: absent). */
+  supportedCommands?(): Promise<SlashCommandLike[]>;
+  /** An MCP Apps ui:// page from a server the session connected (newer SDKs). */
+  readMcpResource?(serverName: string, uri: string): Promise<{ contents: { uri: string; mimeType?: string; text?: string; blob?: string; _meta?: Record<string, unknown> }[] }>;
 }
 
 export interface SessionInfoLike {
@@ -63,4 +77,15 @@ export interface AgentSdk {
   query(params: { prompt: AsyncIterable<SdkUserMessage>; options?: any }): QueryLike;
   listSessions(o?: { dir?: string }): Promise<SessionInfoLike[]>;
   getSessionInfo(sessionId: string): Promise<SessionInfoLike | undefined>;
+  /** An in-process MCP server for a session's options.mcpServers (the block tool's). */
+  createSdkMcpServer?(o: { name: string; version?: string; tools?: unknown[]; alwaysLoad?: boolean }): unknown;
+  /** One tool for it: a zod shape for its arguments, and its handler. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tool?(name: string, description: string, shape: any, handler: (args: any, extra: unknown) => Promise<ToolResultLike>, extras?: Record<string, unknown>): unknown;
+}
+
+/** What an in-process tool's handler returns. */
+export interface ToolResultLike {
+  content: { type: "text"; text: string }[];
+  isError?: boolean;
 }

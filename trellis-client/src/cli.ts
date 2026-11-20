@@ -8,7 +8,8 @@
 //   btkulka-trellis generate (--image ref.png | --prompt "a thing") --name my-thing [--out dir] [--quality high] [--seed n] [--style "…"]
 //   btkulka-trellis obj      in.glb out/prefix [--colors 6] [--scale 1]
 //   btkulka-trellis rent     --image a.png [--name a] [--image b.png --name b …] [--out dir] [--min-memory 40] [--minutes N] [--budget 2] [--yes]
-//                            (a rented GPU on RunPod for what an 8 GB card can't hold; the plan and price print first, --yes spends)
+//                            (a rented GPU on RunPod for what an 8 GB card can't hold; the plan and price print first, --yes spends;
+//                            what the run cost goes into --out as rent-<stamp>.json once the pod has ended)
 //
 // TRELLIS_COMFY_DIR and TRELLIS_URL set the defaults.
 import path from "node:path";
@@ -29,7 +30,7 @@ const USAGE = `btkulka-trellis check|fetch|serve|stop|generate|obj
   stop [--comfy DIR] [--url URL]
   generate (--image FILE | --prompt TEXT) --name NAME [--out DIR] [--quality high] [--seed N] [--resolution N] [--style TEXT]
   obj IN.glb OUT_PREFIX [--colors N] [--scale S]
-  rent --image FILE [--name NAME] [--image FILE --name NAME …] [--out DIR] [--min-memory GB] [--minutes N] [--budget USD] [--yes]
+  rent --image FILE [--name NAME] [--image FILE --name NAME …] [--out DIR] [--min-memory GB] [--gpu ID ...] [--minutes N] [--budget USD] [--yes]
        [--model trellis2|pixal3d|both] [--quality high] [--textured] [--max-faces N]
        a GPU rented on RunPod by the minute: the plan and its worst-case cost print first; only --yes rents.
        The key: Benhäus credential ${RUNPOD_CREDENTIAL} (or env ${RUNPOD_KEY_ENV}).`;
@@ -46,7 +47,7 @@ function main(): Promise<number> {
       image: { type: "string", multiple: true },
       prompt: { type: "string" },
       name: { type: "string", multiple: true },
-      "min-memory": { type: "string" },
+      "min-memory": { type: "string" }, gpu: { type: "string", multiple: true },
       model: { type: "string" },
       textured: { type: "boolean" },
       "max-faces": { type: "string" },
@@ -169,6 +170,7 @@ function main(): Promise<number> {
           jobs,
           outDir: values.out ?? path.resolve("trellis-out"),
           minMemoryGb: values["min-memory"] ? Number(values["min-memory"]) : undefined,
+          gpus: values.gpu && (values.gpu as string[]).length ? (values.gpu as string[]) : undefined,
           maxMinutes: values.minutes ? Number(values.minutes) : undefined,
           budgetUsd: values.budget ? Number(values.budget) : undefined,
           onLog: log,
@@ -196,6 +198,7 @@ function main(): Promise<number> {
         for (const g of r.results) console.log(`glb      ${g.glb} (${g.secs}s, seed ${g.seed})`);
         for (const f of r.failures) console.log(`failed   ${f.name}: ${f.error}`);
         console.log(`${r.gpu ?? "No GPU"}: ${r.minutes} min, about $${r.spentUsd.toFixed(2)}.`);
+        if (r.record) console.log(`record   ${r.record}`);
         return r.failures.length || !r.results.length ? 1 : 0;
       }
       default:

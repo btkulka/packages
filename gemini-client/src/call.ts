@@ -16,7 +16,7 @@ export interface CallInit extends CallOptions {
   /** This call's timeout per attempt, when it isn't the client's. */
   timeoutMs?: number;
   /**
-   * "rate_limit": retry only a 429, which Google refused without doing anything; for calls a repeat
+   * "rate_limit": retry only a 429 or a 503, which Google refused without doing anything; for calls a repeat
    * could double (starting a paid generation). Default "any": 429, 5xx, timeouts and dropped connections.
    */
   retry?: "any" | "rate_limit";

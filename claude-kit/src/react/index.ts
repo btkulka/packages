@@ -6,10 +6,12 @@
 export { ClaudeProvider, claudeToast, useClaude, useStore, useTransport, useUi, type ClaudeUi, type Where } from "./context.js";
 export { ClaudeWidget, ClaudeFab, ClaudeDrawer, askClaude } from "./widget.js";
 export { ClaudePanel, ClaudeChat, More } from "./panel.js";
-export { ChatView, ChatStrip } from "./chat.js";
+export { ChatView, ChatStrip, NameField, renameChat, useRenaming } from "./chat.js";
 export { PastChats } from "./past.js";
 export { Prose } from "./prose.js";
-export { Thumb, Lightbox, prepare, type Pic, type Pending } from "./images.js";
+export { Thumb, Lightbox, Carousel, CarouselView, prepare, type Pic, type Pending } from "./images.js";
+export { BlockFrame, BlockRow, BlocksContext, blockComponent, registerBlock, type BlockComponent, type BlockProps } from "./blocks.js";
+export { pickText, picksIn } from "./picks.js";
 export { MenuButton } from "./menu.js";
 export { ClaudeMark, builtIns, type Components, type MenuItem, type ButtonProps, type TooltipProps, type MenuProps, type SegmentedControlProps, type SearchFieldProps } from "./primitives.js";
 export { createClaudeStore, httpTransport, type ClaudeSnapshot, type ClaudeStore } from "../client/index.js";

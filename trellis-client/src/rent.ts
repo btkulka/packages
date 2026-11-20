@@ -5,12 +5,15 @@
 // cheapest fitting GPU, installs the same ComfyUI (the commit the local install runs) with torch for CUDA 13 and
 // the TRELLIS.2 weights, puts it behind a token on the pod's HTTPS proxy, runs each image through generate()
 // (results fetched over HTTP), and terminates the pod: when the jobs are done, on an error, and at the deadline
-// at the latest (a detached watchdog here, and the pod's own timer there).
+// at the latest (a detached watchdog here, and the pod's own timer there). Once the pod is terminated, a run
+// record (rent-<stamp>.json: the GPU, its price, start and end, the seconds billed, the dollars, the models made)
+// goes into the out folder beside the models, whether the run worked or not: toejam's Spend page reads it.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 
-import { createRunPodClient, planRental, rent, waitForPodHttp, type Cloud, type Plan, type RunPodClient } from "@btkulka/runpod-client";
+import { createRunPodClient, planRental, rent, waitForPodHttp, type Candidate, type Cloud, type Plan, type RunPodClient } from "@btkulka/runpod-client";
 
 import { generate, type GenerateResult } from "./generate.js";
 import { PIXAL3D_WEIGHTS, TRELLIS2_WEIGHTS } from "./weights.js";
@@ -151,6 +154,81 @@ export interface RentResult {
   failures: { name: string; error: string }[];
   spentUsd: number;
   minutes: number;
+  /** The run record written into the out folder after the pod ended (undefined when nothing was rented). */
+  record?: string;
+}
+
+/** What one rented run cost: rent-<stamp>.json in the out folder, written once the pod is terminated. */
+export interface RentRecord {
+  kind: "runpod-rent";
+  tool: "@btkulka/trellis-client rent";
+  pod: string;
+  /** The card's name (A40, RTX PRO 5000…) and RunPod's id for it. */
+  gpu: string;
+  gpuId: string;
+  cloud: Cloud;
+  memoryGb: number;
+  usdPerHour: number;
+  /** ISO times: the pod's start, and its termination. */
+  start: string;
+  end: string;
+  /** Seconds from start to end: what RunPod bills, by the second. */
+  secs: number;
+  /** secs at usdPerHour, to the cent: the same estimate the run prints (RunPod's bill is the truth). */
+  usd: number;
+  /** Every job made a model and nothing threw. */
+  ok: boolean;
+  /** Why the run stopped early, when it did. */
+  error?: string;
+  /** The models made, by name, and the ones that failed. */
+  models: string[];
+  failures: { name: string; error: string }[];
+}
+
+/** The record's file name for a run that ended at `end`: rent-20261118T231500Z.json (an ISO time a file name can hold). */
+export function rentRecordName(end: number | Date): string {
+  return `rent-${new Date(end).toISOString().replace(/\.\d+Z$/, "Z").replace(/[-:]/g, "")}.json`;
+}
+
+/** The record for a run on `candidate` from startedAt to endedAt (ms). */
+export function rentRecord(o: {
+  podId: string;
+  candidate: Candidate;
+  startedAt: number;
+  endedAt: number;
+  models: string[];
+  failures: { name: string; error: string }[];
+  error?: string;
+}): RentRecord {
+  const secs = Math.max(0, Math.round((o.endedAt - o.startedAt) / 1000));
+  return {
+    kind: "runpod-rent",
+    tool: "@btkulka/trellis-client rent",
+    pod: o.podId,
+    gpu: o.candidate.name,
+    gpuId: o.candidate.gpu,
+    cloud: o.candidate.cloud,
+    memoryGb: o.candidate.memory,
+    usdPerHour: o.candidate.pricePerHour,
+    start: new Date(o.startedAt).toISOString(),
+    end: new Date(o.endedAt).toISOString(),
+    secs,
+    usd: Math.round(((o.candidate.pricePerHour * (o.endedAt - o.startedAt)) / 3_600_000) * 100) / 100,
+    ok: !o.error && !o.failures.length,
+    ...(o.error ? { error: o.error } : {}),
+    models: [...o.models],
+    failures: o.failures.map((f) => ({ ...f })),
+  };
+}
+
+/** Writes the record into dir (made if missing) under rentRecordName(its end); returns the file's path. */
+export function writeRentRecord(dir: string, record: RentRecord): string {
+  fs.mkdirSync(dir, { recursive: true });
+  let file = path.join(dir, rentRecordName(Date.parse(record.end)));
+  for (let i = 2; fs.existsSync(file); i++) file = path.join(dir, rentRecordName(Date.parse(record.end)).replace(/\.json$/, `-${i}.json`));
+  fs.writeFileSync(`${file}.part`, JSON.stringify(record, null, 1) + "\n");
+  fs.renameSync(`${file}.part`, file);
+  return file;
 }
 
 const defaultMinutes = (jobs: number) => Math.max(30, 15 + 5 * jobs);
@@ -202,6 +280,8 @@ export async function rentAndGenerate(o: RentOptions, signal?: AbortSignal): Pro
   result.gpu = rental.candidate.name;
   const onAbort = () => void rental.terminate();
   signal?.addEventListener("abort", onAbort, { once: true });
+  const made: string[] = [];
+  let stopped: string | undefined;
   try {
     const url = rental.url(RENT_PORT);
     const headers = { Authorization: `Bearer ${token}` };
@@ -244,17 +324,31 @@ export async function rentAndGenerate(o: RentOptions, signal?: AbortSignal): Pro
           { image: job.image, name: job.name, outDir: o.outDir, seed: job.seed, quality: job.quality, model: job.model, textured: job.textured, maxFaces: job.maxFaces, onProgress: (stage, secs) => log(`  ${job.name}: ${stage}… ${secs}s`) },
         );
         result.results.push(r);
+        made.push(job.name);
         log(`  ${job.name}: ${path.basename(r.glb)}${r.textured ? ` and ${path.basename(r.textured)}` : ""} in ${r.secs}s`);
       } catch (e) {
         result.failures.push({ name: job.name, error: (e as Error).message });
         log(`  ${job.name} failed: ${(e as Error).message}`);
       }
     }
+    if (signal?.aborted && made.length + result.failures.length < o.jobs.length) stopped = "Stopped before every job ran.";
+  } catch (e) {
+    stopped = (e as Error).message;
+    throw e;
   } finally {
     signal?.removeEventListener("abort", onAbort);
     await rental.terminate();
-    result.spentUsd = rental.spentUsd();
-    result.minutes = Math.round((Date.now() - rental.startedAt) / 60_000);
+    const endedAt = Date.now();
+    const record = rentRecord({ podId: rental.id, candidate: rental.candidate, startedAt: rental.startedAt, endedAt, models: made, failures: result.failures, error: stopped });
+    result.spentUsd = record.usd;
+    result.minutes = Math.round((endedAt - rental.startedAt) / 60_000);
+    // What the run cost, beside its models; a record that can't be written never hides the run's own outcome.
+    try {
+      result.record = writeRentRecord(o.outDir, record);
+      log(`Run record: ${result.record}`);
+    } catch (e) {
+      log(`Couldn't write the run record into ${o.outDir}: ${(e as Error).message}`);
+    }
   }
   return result;
 }

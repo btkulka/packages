@@ -1,0 +1,93 @@
+{
+  "name": "@btkulka/meshy-client",
+  "version": "0.1.0",
+  "description": "The Meshy 3D API for Ben's apps: image to 3D (create a task from a local image sent as a data URI, poll it with backoff and an AbortSignal, download the GLB and, when textured, its texture maps), the credit balance, and a credit table per model and texture from Meshy's pricing page. Built on http-kit (timeouts, Retry-After on 429, backoff on 5xx; typed MeshyError with a category). Browser-safe index; a Node-only CLI, meshy-3d, turns concept images or a JSON file of jobs into <name>.glb files with a <name>.meta.json each and a meshy-<stamp>.json run record for toejam's Spend page, the key from Benhäus Credentials (meshy, env MESHY_API_KEY).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "meshy-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "benhaus": {
+    "credential": {
+      "label": "Meshy (image to 3D)",
+      "docs": "https://www.meshy.ai/developers/keys",
+      "fields": [
+        {
+          "name": "apiKey",
+          "label": "API key",
+          "secret": true,
+          "env": "MESHY_API_KEY",
+          "placeholder": "msy_..."
+        }
+      ],
+      "test": {
+        "method": "GET",
+        "url": "https://api.meshy.ai/openapi/v1/balance",
+        "headers": {
+          "Authorization": "Bearer {apiKey}"
+        },
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "status": 401,
+            "message": "Meshy doesn't know this key. Make one at meshy.ai › Developers › API Keys (it starts with msy_; it shows only once) and paste it again. The old shared test-mode key was retired on Sep 16 2026 and now answers 401."
+          },
+          {
+            "status": 403,
+            "message": "Meshy refused this key: it may be limited to other IP addresses (the key's IP allowlist), belong to an inactive team member, or the account's plan may not include the API (the Free plan has none)."
+          },
+          {
+            "status": 429,
+            "message": "Too many requests to Meshy just now. Wait a few seconds and press Test again."
+          }
+        ]
+      }
+    }
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./key": {
+      "types": "./dist/esm/key.d.ts",
+      "import": "./dist/esm/key.js",
+      "require": "./dist/cjs/key.js"
+    }
+  },
+  "bin": {
+    "meshy-3d": "./dist/esm/cli/meshy-3d.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/benhaus-client": "^0.1.0",
+    "@btkulka/http-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}

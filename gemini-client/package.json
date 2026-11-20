@@ -73,7 +73,8 @@
     }
   },
   "bin": {
-    "gemini-video": "./dist/esm/cli/gemini-video.js"
+    "gemini-video": "./dist/esm/cli/gemini-video.js",
+    "gemini-image": "./dist/esm/cli/gemini-image.js"
   },
   "files": [
     "dist",

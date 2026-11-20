@@ -5,6 +5,11 @@ A shared, browser-safe Gemini API (Google AI Studio) client for Ben's apps: the 
 Started 2026-11-02 from a Claude Code session; this file is the brief and the state.
 
 ## Brief
+
+**Videos it makes go into Gallery** (Ben, Nov 20 2026): every MP4 the `gemini-video` CLI writes is added to Ben's
+Gallery with the gallery MCP's `add_images`, filed into the collection of the project it was made for (e.g.
+"toejam › <Piece> › Footage"; `create_collection` if missing) and tagged "ai generated" plus the model; check with
+`search_images`. Links to where a clip was posted go in its item's note (`update_image`).
 What Ben asked for:
 > a gemini adapter so we can generate videos with it
 
@@ -17,6 +22,11 @@ The session that built it was told: an adapter like resend-client (credential "G
 
 - **Interactions API** (aistudio.google.com/api-reference/interactions-api, /docs/background-execution): `GET /v1beta/interactions/{id}`, `POST …/{id}/cancel`, `DELETE …/{id}`; `status` is `in_progress`, `requires_action`, `completed`, `failed`, `cancelled`, `incomplete`, `requires_continuation`; `errors[]` of `{ code, message }`; `usage.output_tokens_by_modality`. `VideoResponseFormat` has `duration` (a string, no format given). `background: true` needs `store: true`; stored 55 days on the paid tier. GET returns the video inline even for `delivery: "uri"`.
 - **Billing** (/docs/billing, /docs/rate-limits): set up billing on the key's project in AI Studio, prepay ≥ $5 or Postpay; Tier 1 at once ($250 monthly cap, $10 per rolling 10 minutes). The $300 Cloud credit doesn't cover the Gemini API.
+
+## Images (2026-11-18)
+Ben, in a toejam panel chat: "let's try generating concept art with nano banana pro instead. let's create an adapter for that if we dont already have one and stored credentials". Added `src/image.ts` (Interactions API, `response_format: { type: "image" }`, refs as image input items, the finished image = the last in `model_output`, drafts from `thought` steps), image prices and models in `src/pricing.ts` (`IMAGE_MODELS`, `IMAGE_PRICES`, `estimateImageCost`, `costOfImageUsage`, read 2026-11-18), and the `gemini-image` CLI (`src/cli/image-run.ts`, `gemini-image.ts`). Google's docs were read for it (the README's Images section has what they said); the first try used generateContent from memory and was moved to Interactions when the docs showed only that. 71 tests, all passing.
+
+First paid runs, same day (toejam Money Warehouse concept art, Nano Banana Pro, 2K, 1-2 references): the request shape works as written. A key without billing gets 429 "limit: 0 requests per day on Free Tier" (category setup; the CLI stops). Output is **image/jpeg** (2048 x 2048 at 2K, saved as .jpg), 21 to 56 s an image, billed about $0.135. At busy times about one call in three answered **503 UNAVAILABLE "experiencing high demand"**; Google refuses those before drawing, so paid calls now retry a 503 like a 429 (`refused` in client.ts), and the CLI uses 6 attempts from 4 s. Still unverified: what a safety-blocked image looks like, and whether a seed exists.
 
 ## State
 Built 2026-11-02, nothing sent to Google (no key yet): `src/client.ts` (http-kit; `x-goog-api-key`; JSON calls and a byte download that only ever sends the key to the API's origin), `src/errors.ts` (`GeminiError`/`GeminiAuthError`, `category` auth/setup/validation/not_found/rate_limit/blocked/other, ErrorInfo `reason`, `quotaIds`), `src/models.ts`, `src/video.ts` (Omni Flash: `request`, `start` in background, `get`, `wait` with backoff, `download`, `generate`, `cancel`, `delete`; Veo ids refused), `src/pricing.ts` (`VIDEO_PRICES`, `TOKEN_PRICES`, estimates, `costOfUsage`, `RETIRED_VIDEO_MODELS`), `src/bytes.ts`, and the CLI in `src/cli` (`jobs.ts` pure, `run.ts` with injected IO, `gemini-video.ts` the bin). 57 tests against the fake fetch in `src/fake-fetch.test.ts`, all passing; build and typecheck pass. README.md is the reference.

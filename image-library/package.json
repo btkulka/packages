@@ -1,0 +1,47 @@
+{
+  "name": "@btkulka/image-library",
+  "version": "0.1.0",
+  "description": "A library of images, videos and 3D models on disk in one SQLite file: nested virtual collections, tags, search (words, tags, model, dates), watched folders that file new images by themselves, gemini-image's prompt and cost sidecars, moving and renaming files with their sidecars, picks, view counts, ffprobe's facts and an ffmpeg frame for videos (through media-kit), and the Benhäus panel's carousel lines. Works on a node:sqlite DatabaseSync the app hands in; grid thumbnails through Electron's nativeImage, also handed in.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "image-library"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md",
+    "icon.svg"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --disable-warning=ExperimentalWarning --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/sqlite-store": "file:../sqlite-store",
+    "@btkulka/media-kit": "file:../media-kit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

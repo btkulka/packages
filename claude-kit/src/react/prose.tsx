@@ -1,9 +1,11 @@
 import { memo, type ReactNode } from "react";
 import { useUi, type ClaudeUi } from "./context.js";
-import { mdSrc, Thumb } from "./images.js";
+import { Carousel, Thumb } from "./images.js";
+import { imageRun, mdSrc } from "./picks.js";
 
 // Claude's markdown, as far as a chat needs it: code blocks with Copy,
-// headings, lists, tables, paragraphs, inline code, bold, links and images.
+// headings, lists, tables, paragraphs, inline code, bold, links and images
+// (two or more in a row a carousel to pick from).
 
 const PATH = /^[A-Za-z]:[\\/][^\s:*?"<>|]+(?::(\d+))?$/;
 /** A bare path in prose (D:\x\y or D:/x/y.ts), its trailing sentence punctuation left out. */
@@ -132,7 +134,7 @@ function Table({ rows, ui }: { rows: string[]; ui: ClaudeUi }) {
   );
 }
 
-/** Claude's markdown, as far as a chat needs it: code blocks, headings, lists, tables, paragraphs. Drawn again only when its text changes. */
+/** Claude's markdown, as far as a chat needs it: code blocks, headings, lists, tables, paragraphs, image carousels. Drawn again only when its text changes. */
 export const Prose = memo(function Prose({ text }: { text: string }) {
   const ui = useUi();
   const out: ReactNode[] = [];
@@ -163,6 +165,14 @@ export const Prose = memo(function Prose({ text }: { text: string }) {
       const rows = [line];
       while (i + 1 < lines.length && inTable(lines[i + 1])) rows.push(lines[++i]);
       out.push(<Table key={out.length} rows={rows} ui={ui} />);
+      continue;
+    }
+    // Two or more images in a row, blank lines between them or not: one carousel (picks.ts's imageRun). One stays a picture of its own.
+    const run = imageRun(lines, i);
+    if (run && run.pics.length > 1) {
+      flush();
+      out.push(<Carousel key={out.length} pics={run.pics} />);
+      i = run.end;
       continue;
     }
     const h = /^#{1,6}\s+(.*)$/.exec(line);

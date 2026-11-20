@@ -114,6 +114,7 @@ btkulka-trellis rent --image drawer.png --image counter.png --out models/trellis
 2. **The pod** (`--yes`): `runpod/pytorch` with the same ComfyUI commit the local install runs (`COMFY_REV`), torch 2.14.1 for CUDA 13, the TRELLIS.2 weights from Hugging Face, ComfyUI on the pod's localhost and a small token proxy (`PROXY_PY`) on its port 8188: RunPod's HTTPS proxy has no authentication, so every request carries a random per-rental token. Setup takes about 10 minutes (the boot script's steps show as it goes); then each model takes a minute or two on a 48 GB card.
 3. **The models**: `generate()` against the pod (`remote: true`: the GLB comes back over ComfyUI's `/view`), into `--out` as usual. A model that fails is reported and the rest go on.
 4. **The end**: the pod is terminated when the models are done, on an error, on Ctrl+C, and at the deadline at the latest, twice over: a detached watchdog on this PC and the pod's own timer. `btkulka-runpod pods` shows anything still running; `btkulka-runpod sweep` ends strays.
+5. **The record**: once the pod is terminated (whether the run worked or not), `rent-<stamp>.json` goes into `--out` beside the models (`rent-20261118T231500Z.json`, the end time in UTC): the GPU (`gpu`, `gpuId`, `cloud`, `memoryGb`), `usdPerHour`, `start` and `end`, `secs` billed, `usd` (the seconds at the hourly rate, to the cent: the same estimate the run prints; RunPod's bill is the truth), `ok`, `error` when it stopped early, the `models` made and the `failures`. toejam's Spend page reads these. `rentRecord()` and `writeRentRecord()` make and write one.
 
 The key: Benhäus › Settings › Credentials › RunPod (`runpod/shared`), or `RUNPOD_API_KEY`. Only image input works on a rented GPU (the concept-image checkpoint isn't downloaded there).
 
@@ -121,7 +122,7 @@ The key: Benhäus › Settings › Credentials › RunPod (`runpod/shared`), or 
 const plan = await rentPlan({ apiKey, jobs: [{ image: "drawer.png", name: "drawer" }], outDir: "models/trellis" });
 if (plan.ok && (await ask(`at most $${plan.maxCostUsd}?`))) {
   const r = await rentAndGenerate({ apiKey, jobs, outDir: "models/trellis", onLog: console.log });
-  // r.results (GenerateResult[]), r.failures, r.spentUsd, r.minutes, r.gpu
+  // r.results (GenerateResult[]), r.failures, r.spentUsd, r.minutes, r.gpu, r.record (the run record's path)
 }
 ```
 

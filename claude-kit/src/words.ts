@@ -20,15 +20,20 @@ export function chatWord(chat?: ChatState): { label: string; cls: string } {
   if (chat.status === "starting") return { label: "Starting", cls: "starting" };
   if (chat.status === "working") return { label: chat.activity ?? "Working", cls: "starting" };
   if (chat.status === "error") return { label: "Stopped", cls: "alert" };
+  const jobs = runningJobs(chat);
+  if (jobs) return { label: jobs === 1 ? "Waiting on a job" : `Waiting on ${jobs} jobs`, cls: "starting" };
   return { label: "Ready", cls: "live" };
 }
+
+/** How many background jobs a chat's session is running. */
+export const runningJobs = (chat: ChatState) => chat.jobs?.filter((j) => !j.ended).length ?? 0;
 
 /** All of them in a few words: a button's tooltip or a badge. `idle` is what it says when nothing's going on. */
 export function chatsWord(list?: ChatsState, idle = "Claude Code"): string {
   const all = list?.chats ?? [];
   if (all.length < 2) return !all[0] || all[0].status === "off" ? idle : chatWord(all[0]).label;
   const waiting = all.filter((c) => c.asks.length).length;
-  const working = all.filter((c) => c.status === "working").length;
+  const working = all.filter((c) => c.status === "working" || runningJobs(c)).length;
   return [waiting && `${waiting} waiting for you`, working && `${working} working`].filter(Boolean).join(" · ") || `${all.length} chats`;
 }
 
@@ -36,7 +41,7 @@ export function chatsWord(list?: ChatsState, idle = "Claude Code"): string {
 export function chatsSignal(list?: ChatsState): "alert" | "working" | undefined {
   const all = list?.chats ?? [];
   if (all.some((c) => c.asks.length || c.status === "error")) return "alert";
-  if (all.some((c) => c.status === "working" || c.status === "starting")) return "working";
+  if (all.some((c) => c.status === "working" || c.status === "starting" || runningJobs(c))) return "working";
   return undefined;
 }
 

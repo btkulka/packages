@@ -96,10 +96,20 @@ async function api(c: Conn, route: string, init: RequestInit = {}): Promise<unkn
 }
 
 async function upload(c: Conn, file: string, name: string): Promise<string> {
-  const form = new FormData();
-  form.append("image", new Blob([fs.readFileSync(file)]), name);
-  form.append("overwrite", "true");
-  return ((await api(c, "/upload/image", { method: "POST", body: form })) as { name: string }).name;
+  // A rented GPU's proxy answers 5xx (524: its 100 s timeout) while the server is still busy finishing the last
+  // model; the next upload a little later goes through. Seen on run 3 of skyline (Nov 2026): half the uploads lost.
+  for (let attempt = 0; ; attempt++) {
+    const form = new FormData();
+    form.append("image", new Blob([fs.readFileSync(file)]), name);
+    form.append("overwrite", "true");
+    try {
+      return ((await api(c, "/upload/image", { method: "POST", body: form })) as { name: string }).name;
+    } catch (e) {
+      const busy = e instanceof TrellisError && /: 5\d\d /.test(e.message);
+      if (!busy || attempt >= 3) throw e;
+      await new Promise((r) => setTimeout(r, 10_000 * 2 ** attempt));
+    }
+  }
 }
 
 /** Every file a finished prompt's nodes saved, from its history entry, with one of these extensions. */

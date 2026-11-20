@@ -1,4 +1,6 @@
+import { settled } from "@btkulka/chat-blocks";
 import type { ChatImage, ChatItem } from "../types.js";
+import { blockOf, outcomeFrom } from "./blocks.js";
 import type { TranscriptEntry } from "./transcript.js";
 
 // Claude Code's messages as a chat's rows: what's said, each tool call with
@@ -71,7 +73,11 @@ export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string
   function assistantItems(id: string, content: unknown, toolState: "running" | "done"): ChatItem[] {
     return blocks(content).flatMap((b, i): ChatItem[] => {
       if (b.type === "text" && b.text?.trim()) return [{ kind: "claude", id: `${id}:${i}`, text: b.text }];
-      if (isToolUse(b)) return [{ kind: "tool", id: b.id!, name: b.name!, detail: detailOf(b.input), state: toolState }];
+      if (isToolUse(b)) {
+        // A block (await_feedback, AskUserQuestion) draws as itself, waiting until its result says how it ended.
+        const block = blockOf(b.name!, b.id!, b.input);
+        return [{ kind: "tool", id: b.id!, name: b.name!, detail: detailOf(b.input), state: toolState, ...(block ? { block } : {}) }];
+      }
       return [];
     });
   }
@@ -84,7 +90,10 @@ export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string
       const r = it.kind === "tool" ? results.get(it.id) : undefined;
       if (!r || it.kind !== "tool") return it;
       const text = textOf(r.content);
-      return { ...it, state: r.is_error ? "error" : "done", result: text.length > 800 ? `${text.slice(0, 800)}…` : text || undefined, images: imagesOf(r.content) };
+      // One answered live keeps how the host said it; one read back takes its outcome from the result.
+      const outcome = it.block?.state === "waiting" ? outcomeFrom(it.block, text, r.is_error) : undefined;
+      const block = it.block && (outcome ? settled(it.block, outcome) : it.block);
+      return { ...it, state: r.is_error ? "error" : "done", result: text.length > 800 ? `${text.slice(0, 800)}…` : text || undefined, images: imagesOf(r.content), ...(block ? { block } : {}) };
     });
   }
 

@@ -1,0 +1,92 @@
+/* @btkulka/chat-blocks: the block frame and the controls inside it, shared by
+   claude-kit's built-in blocks and the pages apps serve, so they look the same.
+   Drawn with claude-kit's --ck-* variables (a chat sets them; page.css maps
+   them onto a page). The frame (.cb-frame) is the chat's: a title, the body,
+   actions, and a state (is-waiting, is-answered, is-expired). Inside a body:
+   buttons (.cb-btn), options to choose (.cb-options > .cb-option), fields
+   (.cb-field), a hint and the answer said back (.cb-said). */
+
+.cb-frame { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 16px; background: var(--ck-ask-bg, rgba(0, 0, 0, 0.22)); box-shadow: inset 0 0 0 1px var(--ck-stroke-strong); min-width: 0; }
+.cb-frame.is-waiting { box-shadow: inset 0 0 0 1px var(--ck-selected-border), 0 0 0 3px color-mix(in srgb, var(--ck-picked) 12%, transparent); }
+.cb-frame.is-expired { opacity: 0.72; }
+.cb-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.cb-title { flex: 1 1 auto; min-width: 0; margin: 0; font: 600 13.5px/19px var(--ck-font); color: var(--ck-ink); overflow-wrap: anywhere; }
+.cb-source { flex: none; font: 500 11px/16px var(--ck-font); color: var(--ck-ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.cb-text { margin: 0; font: 400 13px/18px var(--ck-font); color: var(--ck-ink-2); overflow-wrap: anywhere; white-space: pre-wrap; }
+.cb-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cb-grow { flex: 1 1 auto; }
+.cb-hint { margin: 0; font: 500 12px/16px var(--ck-font); color: var(--ck-ink-3); }
+.cb-said { display: flex; align-items: flex-start; gap: 6px; margin: 0; font: 500 12.5px/17px var(--ck-font); color: var(--ck-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cb-said::before { content: ""; flex: none; width: 14px; height: 14px; margin-top: 1.5px; border-radius: 50%; background: var(--ck-picked) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 10px no-repeat; }
+.cb-frame.is-expired .cb-said::before, .cb-said.is-expired::before { background-color: var(--ck-ink-3); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E"); }
+
+/* Buttons: quiet by default, .is-primary the one that answers, .is-danger for a yes that's hard to undo. */
+.cb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ck-stroke-strong); background: none; color: var(--ck-ink-2); font: 600 13px/1 var(--ck-font); white-space: nowrap; cursor: pointer; transition: background var(--ck-quick, 160ms), color var(--ck-quick, 160ms), border-color var(--ck-quick, 160ms), transform var(--ck-quick, 160ms); }
+.cb-btn:hover:not(:disabled) { color: var(--ck-ink); border-color: var(--ck-ink-3); }
+.cb-btn.is-primary { background: var(--ck-accent); border-color: transparent; color: var(--ck-accent-ink); }
+.cb-btn.is-primary:hover:not(:disabled) { color: var(--ck-accent-ink); filter: brightness(1.06); }
+.cb-btn.is-danger { background: var(--ck-alert); border-color: transparent; color: #fff; }
+.cb-btn:disabled { opacity: 0.45; cursor: default; }
+.cb-btn:active:not(:disabled) { transform: scale(0.97); }
+.cb-btn:focus-visible, .cb-option:focus-visible, .cb-input:focus-visible { outline: 2px solid var(--ck-focus); outline-offset: 2px; }
+
+/* Options to choose: a row each, a mark (round for one, square for several), the label and what it means. */
+.cb-options { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.cb-option { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--ck-stroke-strong); background: var(--ck-surface-2); color: var(--ck-ink); text-align: left; font: inherit; cursor: pointer; transition: background var(--ck-quick, 160ms), border-color var(--ck-quick, 160ms); }
+.cb-option:hover:not(:disabled) { border-color: var(--ck-ink-3); }
+.cb-option.is-on { background: var(--ck-selected); border-color: var(--ck-selected-border); }
+.cb-option:disabled { cursor: default; }
+.cb-option:disabled:not(.is-on) { opacity: 0.55; }
+.cb-mark { flex: none; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; border: 1.5px solid var(--ck-ink-3); display: grid; place-items: center; }
+.cb-options.is-multi .cb-mark { border-radius: 5px; }
+.cb-option.is-on .cb-mark { border-color: var(--ck-picked); background: var(--ck-picked); }
+.cb-option.is-on .cb-mark::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ck-picked-ink); }
+.cb-options.is-multi .cb-option.is-on .cb-mark::after { width: 9px; height: 5px; border-radius: 0; background: none; border: solid var(--ck-picked-ink); border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
+.cb-optext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cb-oplabel { font: 600 13px/18px var(--ck-font); overflow-wrap: anywhere; }
+.cb-opdesc { font: 400 12px/16px var(--ck-font); color: var(--ck-ink-2); overflow-wrap: anywhere; }
+.cb-qhead { margin: 2px 0 0; font: 600 11px/16px var(--ck-font); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ck-ink-3); }
+.cb-question { margin: 0; font: 500 13px/18px var(--ck-font); color: var(--ck-ink); }
+
+/* Fields. */
+.cb-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cb-field.is-check { flex-direction: row; align-items: center; gap: 8px; }
+.cb-label { font: 500 12px/16px var(--ck-font); color: var(--ck-ink-2); }
+.cb-label.is-required::after { content: " *"; color: var(--ck-alert); }
+.cb-input { width: 100%; min-height: 34px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--ck-field-border); background: var(--ck-field); color: var(--ck-ink); font: 400 13px/18px var(--ck-font); outline: none; box-sizing: border-box; }
+textarea.cb-input { resize: vertical; min-height: 64px; }
+.cb-input::placeholder { color: var(--ck-ink-3); }
+.cb-input:disabled { opacity: 0.7; }
+.cb-error { margin: 0; font: 500 12px/16px var(--ck-font); color: var(--ck-alert); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-btn, .cb-option { transition: none; }
+}
+
+/* Groups (a grouped pick, several questions): a label and what's picked, then the group's carousel or options.
+   A grouped pick's cards are narrower, so a long list of groups stays short. */
+.cb-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cb-group + .cb-group { padding-top: 10px; border-top: 1px solid var(--ck-stroke); }
+.cb-grouphead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cb-group.is-compact { --ck-card-w: 148px; }
+.cb-group.is-compact .ck-card__meta .ck-caption { white-space: nowrap; }
+.cb-group.is-compact button.ck-card__pick { padding: 0 9px; }
+
+/* An app's page in its frame: the iframe as wide as the frame, as tall as the page says (the chat caps it). */
+.cb-app { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cb-page { display: block; width: 100%; border: 0; border-radius: 10px; background: transparent; }
+.cb-page.has-border { box-shadow: inset 0 0 0 1px var(--ck-stroke-strong); background: var(--ck-surface-2); }
+
+/* The page's box: a <dialog> shown in place (in flow, like a div) while the page sits in the conversation,
+   and in the top layer over the whole window when the page asks for fullscreen (the same iframe, so nothing
+   reloads; the top layer is clear of the panel's transforms and overflow). Its bar, the block's title and
+   Back to the chat, shows only over the whole window. */
+dialog.cb-pagebox { position: static; display: block; width: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; overflow: visible; }
+dialog.cb-pagebox:not([open]) { display: none; }
+.cb-pagebar { display: none; }
+dialog.cb-pagebox:modal { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 10px; width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; padding: 12px 16px 16px; box-sizing: border-box; background: var(--ck-surface, #121214); color: var(--ck-ink); overflow: hidden; }
+dialog.cb-pagebox:modal .cb-pagebar { display: flex; align-items: center; gap: 10px; flex: none; min-width: 0; }
+dialog.cb-pagebox:modal .cb-pagebar .cb-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.cb-pagebox:modal .cb-page { flex: 1 1 auto; height: auto !important; min-height: 0; border-radius: 12px; }
+dialog.cb-pagebox::backdrop { background: rgba(0, 0, 0, 0.72); }

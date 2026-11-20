@@ -10,6 +10,7 @@ import type { ClaudeEvent, ThumbSize } from "../types.js";
 //   POST /rpc           {"method": "send", "args": ["hi"]} → {"ok": true, "value": …}
 //   GET  /events        the host's events as Server-Sent Events (chats, chat, stream)
 //   GET  /image?ref=…   an image to draw (&folder=…&thumb=md|lg)
+//   GET  /file?chat=…&block=…&ref=…   a file an app block's page asked for (the host says which it may)
 //   GET  /element.js    the <claude-widget> element (../element), React inside
 //   GET  /styles.css    its styles, for a page that uses /react itself
 //
@@ -35,7 +36,7 @@ export interface HttpHandlerOptions {
   assets?: string;
 }
 
-const METHODS = ["state", "start", "seen", "send", "stop", "newChat", "select", "close", "answer", "terminal", "configure", "past", "load"] as const;
+const METHODS = ["state", "start", "seen", "send", "stop", "newChat", "select", "close", "answer", "reply", "appPage", "terminal", "configure", "commands", "past", "load"] as const;
 type Method = (typeof METHODS)[number];
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -165,6 +166,25 @@ export function httpHandler(host: ChatHost, o: HttpHandlerOptions = {}): HttpHan
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
           });
           res.end(img.bytes);
+        })
+        .catch((e: Error) => json(res, 404, { ok: false, error: e.message }));
+      return;
+    }
+
+    if (req.method === "GET" && path === "/file") {
+      const q = url.searchParams;
+      void host
+        .blockFile(q.get("chat") ?? "", q.get("block") ?? "", q.get("ref") ?? "")
+        .then((f) => {
+          res.writeHead(200, {
+            "Content-Type": f.type,
+            "Content-Length": String(f.bytes.length),
+            "Cache-Control": "no-store",
+            "Content-Disposition": `attachment; filename="${encodeURIComponent(f.name)}"`,
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+          });
+          res.end(f.bytes);
         })
         .catch((e: Error) => json(res, 404, { ok: false, error: e.message }));
       return;

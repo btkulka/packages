@@ -1,0 +1,61 @@
+{
+  "name": "@btkulka/model-viewer",
+  "version": "0.1.0",
+  "description": "A three.js viewer for 3D models on disk: .glb, .gltf, .obj (with its .mtl) and sets of OBJ parts named in a sidecar (TRELLIS colour groups, toejam's Blender exports, drawn in the sidecar's colours). Drag to turn, scroll to zoom, a turntable, lit and unlit (base colour) shading, wireframe, a three-quarter view, and thumbnails from one shared offscreen renderer. Reads files through a function the app hands in, so the same viewer draws from an Electron protocol, an MCP Apps chat block's file() or fetch. ESM for apps that bundle, and one self-contained script (window.ModelView) for a page that can't load modules.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "model-viewer"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js"
+    },
+    "./sets": {
+      "types": "./dist/esm/sets.d.ts",
+      "import": "./dist/esm/sets.js"
+    },
+    "./viewer.global.js": "./dist/viewer.global.js"
+  },
+  "typesVersions": {
+    "*": {
+      "sets": [
+        "dist/esm/sets.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md",
+    "icon.svg"
+  ],
+  "sideEffects": [
+    "./dist/viewer.global.js"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/global.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/three": "^0.187.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}

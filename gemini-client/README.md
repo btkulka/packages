@@ -4,8 +4,9 @@ The Gemini API (Google AI Studio) for Ben's apps: an API key in, and the calls t
 
 - **models**: list them (one page, or every page), get one; the same `GET /v1beta/models` Benhäus uses to test the key;
 - **video**: generate a clip with **Gemini Omni Flash** (`gemini-omni-1.1-flash`) through the Interactions API: `start` it in the background, `get` it, `wait` for it with backoff and an `AbortSignal`, `download` the MP4 as bytes, or `generate` to do all four; `cancel` and `delete`;
-- **prices**: a per-second table per model and resolution, with the date it was read and its source, a run's estimate, and the real cost from a finished clip's `usage`;
-- **`gemini-video`**: a Node-only CLI that renders a prompt, or a JSON file of jobs, to `<name>.mp4` files, with the key from Benhäus Credentials.
+- **image**: draw an image with **Nano Banana Pro** (`gemini-3-pro-image`, the default), **Nano Banana 2.1** (`gemini-nano-banana-2.1`) or **Nano Banana 2** (`gemini-3.1-flash-image`) through the same Interactions API, with up to 14 reference images, an aspect ratio and 1K/2K/4K; `generate` answers with the finished image, the thought drafts and the model's text;
+- **prices**: a per-second table per video model and resolution, a per-image table per image model and size, with the date it was read and its source, a run's estimate, and the real cost from a finished clip's `usage`;
+- **`gemini-video`** and **`gemini-image`**: Node-only CLIs that render a prompt, or a JSON file of jobs, to `<name>.mp4` or `<name>.png` files, with the key from Benhäus Credentials.
 
 **Veo is gone from the Gemini API.** Google shut the Veo 3.1 previews (`veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview`, `veo-3.1-lite-generate-preview`) on 2026-10-22, and `veo-3.0-*` and `veo-2.0-*` from 2026-06-30, so their `:predictLongRunning` call no longer exists on an AI Studio key. Google's replacement is Gemini Omni Flash (GA 2026-08-27), which this package uses. A request naming a Veo model throws (`retired_model`) without a request. Veo 3.1 GA survives on Google Cloud's Gemini Enterprise Agent Platform, which takes Cloud credentials, not this key.
 
@@ -172,6 +173,36 @@ A jobs file is an array (or `{ "jobs": [...] }`) of `{ name, prompt, negativePro
 npx gemini-video --jobs clips.json --out D:/source/toejam/pieces/<piece>/stand-ins --dry-run
 npx gemini-video --jobs clips.json --out D:/source/toejam/pieces/<piece>/stand-ins --yes
 ```
+
+## Images (Nano Banana)
+
+Read 2026-11-18 from aistudio.google.com/docs/image-generation, /docs/models and /docs/pricing. Google documents image generation on the Interactions API now: `POST /v1beta/interactions` with `{ model, input, response_format: { type: "image", aspect_ratio, image_size } }`, `input` a string or `[{ type: "image", data, mime_type }…, { type: "text", text }]`; the image comes back in `steps[]` (type `model_output`) › `content[]` (type `image`, base64 `data`). The models think first (always on) and may draw up to two drafts in `thought` steps, not charged; the finished image is the last in the output.
+
+| model | id | 1K | 2K | 4K | notes |
+|---|---|---|---|---|---|
+| Nano Banana Pro | `gemini-3-pro-image` | $0.134 | $0.134 | $0.24 | the default; 5 refs at high fidelity (3 of them styles), 14 in all; 10 aspect ratios |
+| Nano Banana 2.1 | `gemini-nano-banana-2.1` | $0.0336 | $0.0504 | $0.113 | released 2026-10-06, Google's pick for new projects; 14 ratios |
+| Nano Banana 2 | `gemini-3.1-flash-image` | $0.067 | $0.101 | $0.151 | 14 ratios |
+
+No free tier for any of them. Reference images cost about $0.001 each. The previews (`gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`) shut down 2026-06-25; `imageModel()` maps their names to the replacements. Sizes take a capital K (`2k` is rejected). Aliases: `pro`, `2.1`, `flash`, `nano-banana-pro`, `nano-banana-2.1`, `nano-banana-2`.
+
+```ts
+const r = await gemini.image.generate({ prompt: "a brass safe-deposit drawer…", images: [{ data: bytes, mimeType: "image/png" }], aspectRatio: "1:1", size: "2K", system: "the house style…" });
+// r.image.bytes (PNG), r.thoughts, r.text, r.interaction (id, usage)
+costOfImageUsage(r.model, "2K", r.interaction.usage);   // what it cost
+estimateImageCost([{ size: "2K", references: 1 }]).usd; // 0.1351, before spending
+```
+
+`generate` retries only a 429 (Google refused it outright), never a 5xx or a timeout, so a paid image isn't drawn twice. An interaction with no image throws `GeminiError` code `no_image`, category `blocked`. Not settled until the first paid run: whether `seed` exists (not documented, so not sent), the output mime type (assumed PNG), and what a blocked image looks like on the wire.
+
+## gemini-image (the CLI)
+
+```
+gemini-image "<prompt>" --out <folder> [--name <name>] [--ref <image>]... [options]
+gemini-image --jobs <jobs.json> --out <folder> [options]
+```
+
+Same habits as `gemini-video`: the estimate prints every time, nothing is sent without `--yes` (exit 2), `--dry-run` prints the requests. Flags (the defaults for every job): `--ref` (repeatable, up to 14), `--aspect` (1:1), `--size` (2K), `--count` (variations, separate calls: `<name>-1.png`…), `--model` (`pro`, `2.1`, `flash` or an id), `--system` (a house style put ahead of every prompt), `--force`, `--credential` (default `gemini/toejam`), `--app`. A jobs file is an array of `{ name, prompt, refs?, aspect?, size?, model?, count?, system? }` with refs relative to the file. Each image is written as `<name>.png` with `<name>.json` beside it (prompt, system, refs, model, size, aspect, the model's text, the interaction id, usage, dollars, seconds); one is drawn at a time, and Ctrl+C stops after the image in flight (it's already paid for). toejam's concept art for Money Warehouse is the first use: `pieces/money/concept/` (`jobs.json`, `style.txt`, `toon.txt`).
 
 ## Working on it
 

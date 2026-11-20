@@ -5,6 +5,8 @@ Claude Code chats in any of Ben's apps, the way the Benhäus panel has them. Eac
 - **asks**: Allow, Always allow or Deny, before edits and commands
 - **modes and models**
 - **images** pasted, dropped, returned by tools or shown in replies, with a lightbox
+- **carousels to pick from**: two or more images in a row in a reply
+- **blocks**: Claude asks with `await_feedback` (pick images, one carousel or grouped; choose; confirm; a form; an app's own page) or AskUserQuestion, and waits for the answer ([chat-blocks](../chat-blocks))
 - **several chats** as chips
 - **Past chats**: picks up any conversation Claude Code kept, the app's own or a terminal's
 - **Continue in terminal**
@@ -139,12 +141,18 @@ Files go with a message as images do: dropped, pasted or picked (the paperclip t
 - `showPath`, `relTime`, `errorText`, `title`, `emptyNote`, `machine`
 - `portal`
 
+**Images in a reply.** `![what it is](a path or an https address)` on a line of its own draws the image. Two or more image lines in a row (blank lines between them allowed) draw as one carousel instead: cards in a strip that scrolls sideways, each with its alt text, its place ("2 of 4") and **Pick**. A card opens the lightbox on that set alone, which has Pick too (Enter presses it). Picking sends an ordinary message from the person, `Picked 2 of 4: what it is (D:\renders\b.png)` (`pickText`), and the card shows as picked. That comes from the conversation, the latest message starting "Picked" that names one of its images (`picksIn`), so it holds through a redraw and a restart. Tell Claude in `systemPrompt` that several images in a row are a carousel and that the pick comes back that way.
+
 Keep `ui` stable with `useMemo` or a module constant. Pass `store` to keep the chats in the app's own store; it needs `getState`, `subscribe` and `setPast`.
 
 Vite apps link the package's `dist/`, which resolves `react` from `D:\source\packages\node_modules`. **Add `resolve: { dedupe: ["react", "react-dom"] }`** to the renderer's Vite config so there's one React.
 
-**Theming.** Set any `--ck-*` variable on `.ck-root` (or deeper). The defaults are wrapped in `:where()`, so any rule wins. The main ones: `--ck-ink`, `--ck-ink-2`, `--ck-ink-3`, `--ck-surface`, `--ck-surface-2`, `--ck-surface-3`, `--ck-stroke`, `--ck-stroke-strong`, `--ck-selected`, `--ck-accent`, `--ck-accent-ink`, `--ck-live`, `--ck-alert`, `--ck-font`, `--ck-mono`, `--ck-z`.
+**Blocks.** With an SDK that hosts in-process tools (`createSdkMcpServer`), each session gets `mcp__blocks__await_feedback` (allowed without asking) and AskUserQuestion is let through. Turn both off with `blocks: false`. The tool takes a [chat-blocks](../chat-blocks) spec (`kind`, `title`, `body`, `props`, `app`, `timeoutS`), checks it (a bad one goes back to Claude to fix), and holds the call until the person answers. The block is drawn on the call's own row: the CLI passes each call's tool-use id in the request's `_meta`. The answer comes from `reply(id, { value } | { text })` on any transport. A text-only message sent while a block waits answers it too, and doesn't appear as a message of its own. A message with images or files ends the block instead, as do Stop, the session going, the call being cancelled, or `timeoutS`. AskUserQuestion goes through `canUseTool`, which Claude Code calls for it even in bypass mode, and its answers go back as `updatedInput.answers`. Waiting blocks are `ChatState.blocks`. A tool row that is a block carries it (`ChatItem.block`) and reads its outcome back from the result, so a transcript shows every block answered or expired. The host adds a line to the system prompt (`blocksNote`, false to leave it out). An app page (a `ui://` kind with `app`) is read through the session with `appPage(chat, app, uri)` and drawn in a sandboxed iframe. Its `file()` reads through `file(chat, block, ref)` (the host's `blockFile`; over HTTP `GET /file?chat=…&block=…&ref=…`): only for an app block in that chat, waiting or on its row, and only a path its props name or a file in that path's folder or below it (a model's textures, a set's parts), up to 512 MB. The bytes reach the page handed over, not copied. A page that asks for fullscreen (`ui/request-display-mode`) goes over the whole window: its iframe sits in a `<dialog>` shown in place, shown modally instead (the top layer, clear of the panel's transforms), so nothing reloads; Esc or Back to the chat brings it back.
+
+The screens draw blocks with `BlockFrame` and a component per kind. Built in: `pick` (on `CarouselView`, the carousel without the markdown's message), `choice`, `confirm`, `form` and `questions`. Add your own with `registerBlock(kind, Component)`, which gets `{ block, live, answer }`. The frame's look is chat-blocks' `frame.css`, which `styles.css` carries.
+
+**Theming.** Set any `--ck-*` variable on `.ck-root` (or deeper). The defaults are wrapped in `:where()`, so any rule wins. The main ones: `--ck-ink`, `--ck-ink-2`, `--ck-ink-3`, `--ck-surface`, `--ck-surface-2`, `--ck-surface-3`, `--ck-stroke`, `--ck-stroke-strong`, `--ck-selected`, `--ck-picked` (a carousel pick's outline and check), `--ck-accent`, `--ck-accent-ink`, `--ck-live`, `--ck-alert`, `--ck-font`, `--ck-mono`, `--ck-z`.
 
 ## Working on it
 
-`npm run build` runs tsc for both builds, then `scripts/assets.mjs`, which copies the CSS and bundles the element with esbuild. `npm test` runs the patch tests, plus host and HTTP tests on a fake Agent SDK. `npm run typecheck` also checks the element.
+`npm run build` runs tsc for both builds, then `scripts/assets.mjs`, which copies the CSS and bundles the element with esbuild. `npm test` runs the patch tests, the carousel's rules (`src/react/picks.test.ts`), plus host, block and HTTP tests on a fake Agent SDK. `npm run typecheck` also checks the element.

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>image-library: images on disk in one SQLite file, with collections, tags, search and sidecars</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7cb8ff" stop-opacity="0.30"/><stop offset="1" stop-color="#2f6db5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3f0ff" stop-opacity="0.22"/><stop offset="1" stop-color="#7cb8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="64" y1="56" x2="192" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3f0ff"/><stop offset="0.5" stop-color="#7cb8ff"/><stop offset="1" stop-color="#2f6db5"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <!-- The glyph: pictures filed as a stack (the library), the top one in full. -->
+    <g id="glyph">
+      <rect x="72" y="166" width="112" height="20" rx="8" opacity="0.4"/>
+      <rect x="64" y="148" width="128" height="22" rx="9" opacity="0.65"/>
+      <path fill-rule="evenodd" d="M74 70h108a14 14 0 0 1 14 14v52a14 14 0 0 1-14 14H74a14 14 0 0 1-14-14V84a14 14 0 0 1 14-14zM76 86v48h104V86z"/>
+      <path d="M76 134l26-28 18 18 14-12 22 22z"/>
+      <circle cx="160" cy="102" r="8"/>
+    </g>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="214" rx="64" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <use href="#glyph" transform="translate(0 8)" fill="#0f2a4d"/>
+    <use href="#glyph" fill="url(#face)"/>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

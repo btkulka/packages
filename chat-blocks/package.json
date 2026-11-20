@@ -1,0 +1,78 @@
+{
+  "name": "@btkulka/chat-blocks",
+  "version": "0.1.0",
+  "description": "Embedded chat blocks: things Claude puts in a conversation for the person to answer (pick images, one carousel or grouped, choose, confirm, fill a form, AskUserQuestion), as one spec, one answer and one frame. The specs and answers checked and said in words, the result Claude gets back and reads again from a transcript, the frame's stylesheet, and app pages: an app's own block served from its MCP server as an MCP Apps ui:// page, with a bridge (connect, answer, image) and a page maker that inlines it.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "chat-blocks"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./bridge": {
+      "types": "./dist/esm/bridge.d.ts",
+      "import": "./dist/esm/bridge.js",
+      "require": "./dist/cjs/bridge.js"
+    },
+    "./page": {
+      "types": "./dist/esm/page.d.ts",
+      "import": "./dist/esm/page.js",
+      "require": "./dist/cjs/page.js"
+    },
+    "./swipe": {
+      "types": "./dist/esm/swipe.d.ts",
+      "import": "./dist/esm/swipe.js",
+      "require": "./dist/cjs/swipe.js"
+    },
+    "./frame.css": "./dist/frame.css",
+    "./page.css": "./dist/page.css",
+    "./bridge.global.js": "./dist/bridge.global.js"
+  },
+  "typesVersions": {
+    "*": {
+      "bridge": [
+        "dist/esm/bridge.d.ts"
+      ],
+      "page": [
+        "dist/esm/page.d.ts"
+      ],
+      "swipe": [
+        "dist/esm/swipe.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "sideEffects": [
+    "*.css",
+    "./dist/bridge.global.js"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/inline.mjs && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs && node scripts/inline.mjs --copy",
+    "typecheck": "node scripts/inline.mjs && tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}

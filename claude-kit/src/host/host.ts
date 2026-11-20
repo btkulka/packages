@@ -1,12 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { answerFor, checkSpec, expiredOutcome, outcomeOf, outcomeText, settled, shownOutcome, withPolicy, type BlockOutcome, type BlockSpec, type ChatBlock, type PageCsp } from "@btkulka/chat-blocks";
 import { diffItems } from "../patch.js";
 import type {
+  AppPage,
   AskDecision,
+  RawAnswer,
   ChatAsk,
+  ChatCommand,
   ChatFile,
   ChatImage,
   ChatItem,
+  ChatJob,
   ChatPatch,
   ChatsPatch,
   ChatsState,
@@ -14,6 +20,7 @@ import type {
   ChatStreamDelta,
   ClaudeEvent,
   ClaudeMode,
+  FileBytesOut,
   ImageBytesOut,
   NewChatFile,
   NewChatImage,
@@ -21,12 +28,16 @@ import type {
   PastChat,
   ThumbSize,
   ChatLimits,
+  ChatSettings,
   ChatVerbosity,
 } from "../types.js";
+import { fileType, MAX_FILE_BYTES, readablePath } from "./blockfiles.js";
 import { FileStore } from "./files.js";
 import { ImageStore, type ImageTools } from "./images.js";
+import { ASK_TOOL, BLOCK_SERVER, BLOCK_TOOL, BLOCK_TOOL_DESCRIPTION, BLOCK_TOOL_NAME, blockToolShape, questionAnswers, questionsBlock, type ZodLike } from "./blocks.js";
 import { contextWrapper, detailOf, firstLine, MAX_ITEMS, rowMaker } from "./items.js";
-import type { AgentSdk, CanUseToolLike, PermissionResultLike, QueryLike, Said, SdkMessage, SdkUserMessage } from "./sdk.js";
+import { toolLabel } from "../words.js";
+import type { AgentSdk, CanUseToolLike, PermissionResultLike, QueryLike, Said, SdkMessage, SdkUserMessage, SlashCommandLike, ToolResultLike } from "./sdk.js";
 import { openTerminal } from "./terminal.js";
 import { transcriptTail } from "./transcript.js";
 
@@ -48,6 +59,8 @@ const TAIL_ENTRIES = 900;
 
 const IMAGES_NOTE =
   "This chat shows images: ones the person attaches come with their message, and to show them one, put it in your reply as markdown, ![what it is](a path or an https address), on a line of its own; they can open it large or save it.";
+
+const BLOCKS_NOTE = `To have the person pick an image (one carousel, or a group of carousels picked together), choose between options, confirm, or fill in a few fields, call ${BLOCK_TOOL_NAME} instead of asking in words and ending your turn: the chat draws it, and their answer comes back as the tool's result.`;
 
 type Value<T> = T | (() => T);
 const val = <T>(v: Value<T>): T => (typeof v === "function" ? (v as () => T)() : v);
@@ -75,6 +88,15 @@ export interface ChatHostOptions {
   systemPrompt?: Value<string>;
   /** The note on showing images, added after `systemPrompt`; false leaves it out. */
   imagesNote?: string | false;
+  /**
+   * Embedded blocks (@btkulka/chat-blocks): each session gets the await_feedback tool (pick, choice, confirm, form,
+   * an app's ui:// page), whose call waits for the person's answer, and AskUserQuestion comes as a block too.
+   * false: neither (AskUserQuestion stays off, its questions coming as plain text). Default true; off by itself
+   * with an SDK that can't host an in-process tool.
+   */
+  blocks?: boolean;
+  /** The note on blocks, added after the images note; false leaves it out. */
+  blocksNote?: string | false;
   /** The app's own MCP servers, beside the person's: an SDK server (createSdkMcpServer), stdio or HTTP. */
   mcpServers?: Value<Record<string, unknown>>;
   /** Anything else for query(), per chat (allowedTools, settingSources, hooks…). The host's own options win over these. */
@@ -162,13 +184,36 @@ class Inbox implements AsyncIterable<SdkUserMessage> {
 }
 
 type Pending = { ask: ChatAsk; input: Record<string, unknown>; suggestions?: unknown[]; resolve: (r: PermissionResultLike) => void };
+/**
+ * A session's slash commands for the / menu: one row a name (Claude Code's own when another shares it, as /name
+ * runs that one), leaving out the internal ones (__name) and those only a terminal can use.
+ */
+function menuCommands(list: SlashCommandLike[], terminalOnly: ReadonlySet<string>): ChatCommand[] {
+  const own = new Set(list.filter((x) => x.builtin).map((x) => x.name));
+  const seen = new Set<string>();
+  const out: ChatCommand[] = [];
+  for (const x of list) {
+    if (!x.name || x.name.startsWith("_") || terminalOnly.has(x.name) || seen.has(x.name) || (own.has(x.name) && !x.builtin)) continue;
+    seen.add(x.name);
+    out.push({ name: x.name, description: x.description ?? "", ...(x.argumentHint ? { hint: x.argumentHint } : {}), ...(x.aliases?.length ? { aliases: x.aliases } : {}), ...(x.builtin ? { builtin: true } : {}) });
+  }
+  return out;
+}
+
+/** How long a background job that ended stays shown, saying how it went. */
+const JOB_LINGER_MS = 8_000;
+
+/** A block waiting for its answer: `finish` ends the call waiting on it. */
+type PendingBlock = { block: ChatBlock; finish: (o: BlockOutcome) => void; timer?: ReturnType<typeof setTimeout> };
 
 /** One chat: its conversation, and the session behind it while one is up. */
 type Chat = {
   id: string;
   title?: string;
-  state: Omit<ChatState, "id" | "title" | "asks">;
+  state: Omit<ChatState, "id" | "title" | "asks" | "blocks">;
   asks: Map<string, Pending>;
+  /** Blocks waiting for an answer, by their tool call's id. */
+  blocks: Map<string, PendingBlock>;
   session?: { q: QueryLike; inbox: Inbox };
   starting?: Promise<void>;
   /** Bumped whenever the session is let go, so a start still on its way gives up. */
@@ -196,6 +241,8 @@ type Chat = {
   loading?: Promise<void>;
   /** A terminal had it (Continue in terminal): the transcript is read again when its session next starts. */
   stale: boolean;
+  /** Its session's slash commands, as it last said; read again with its next session. */
+  commands?: SlashCommandLike[];
 };
 
 export class ChatHost {
@@ -203,6 +250,8 @@ export class ChatHost {
   /** The chat shown. */
   private current = "";
   private models: ChatsState["models"] = [];
+  /** The commands Claude Code says only a terminal can use (its init message): left out of the / menu. */
+  private terminalOnly = new Set<string>();
   private picked: Saved["picked"] = {};
   private readonly listeners = new Set<(e: ClaudeEvent) => void>();
   /** The chats the screens have had whole: a list change sends only the others. */
@@ -293,7 +342,7 @@ export class ChatHost {
     return old?.sessionId && old.folder ? { chats: [{ id: this.nextId(), sessionId: old.sessionId, folder: old.folder, model: old.model }] } : { chats: [] };
   }
 
-  private stateOf = (c: Chat): ChatState => ({ id: c.id, title: c.title ?? "New chat", ...c.state, asks: [...c.asks.values()].map((p) => p.ask) });
+  private stateOf = (c: Chat): ChatState => ({ id: c.id, title: c.title ?? "New chat", ...c.state, asks: [...c.asks.values()].map((p) => p.ask), blocks: [...c.blocks.values()].map((p) => p.block) });
 
   private shown = (): Chat => this.chats.get(this.current) ?? [...this.chats.values()][0] ?? this.addChat();
 
@@ -401,6 +450,7 @@ export class ChatHost {
       title: o.title,
       state: { status: "off", about: o.about, folder: o.folder, sessionId: o.sessionId, pickedModel: o.model, model: o.model || undefined, mode: o.mode, items: [] },
       asks: new Map(),
+      blocks: new Map(),
       gen: 0,
       early: [],
       context: o.context,
@@ -444,7 +494,8 @@ export class ChatHost {
     const unseen = this.opts.unseenMs ?? 5 * 60_000;
     const idleMs = this.opts.idleMs ?? 30 * 60_000;
     for (const c of this.chats.values()) {
-      if (!c.session || c.state.status !== "ready" || c.asks.size) continue;
+      // A background job dies with its session, so a chat running one keeps it, asleep or not.
+      if (!c.session || c.state.status !== "ready" || c.asks.size || c.blocks.size || c.state.jobs?.some((j) => !j.ended)) continue;
       const idle = now - c.idleSince;
       if (all || idle > idleMs || (idle > unseen && now - c.seenAt > unseen)) {
         this.closeSession(c);
@@ -504,9 +555,13 @@ export class ChatHost {
     switch (m.type) {
       case "system":
         if (m.subtype === "init") {
+          if (Array.isArray(m.terminal_slash_commands)) this.terminalOnly = new Set(m.terminal_slash_commands);
           this.set(c, { sessionId: m.session_id, model: m.model, mode: m.permissionMode });
           this.save();
-        } else if (m.subtype === "status") this.set(c, { activity: m.status === "compacting" ? "Compacting the conversation" : undefined, ...(m.permissionMode ? { mode: m.permissionMode } : {}) });
+        } else if (m.subtype === "commands_changed" && Array.isArray(m.commands)) c.commands = m.commands;
+        else if (m.subtype === "background_tasks_changed" && Array.isArray(m.tasks)) this.jobsNow(c, m.tasks);
+        else if (m.subtype === "task_progress") this.jobProgress(c, m);
+        else if (m.subtype === "task_notification") this.jobEnded(c, m.task_id, m.status, m.summary); else if (m.subtype === "status") this.set(c, { activity: m.status === "compacting" ? "Compacting the conversation" : undefined, ...(m.permissionMode ? { mode: m.permissionMode } : {}) });
         else if (m.subtype === "compact_boundary") this.note(c, "Earlier messages were compacted to make room.");
         else if (m.subtype === "api_retry") this.set(c, { activity: `Retrying, attempt ${m.attempt} of ${m.max_retries}` });
         return;
@@ -514,7 +569,11 @@ export class ChatHost {
         if (m.parent_tool_use_id) return;
         const ev = m.event;
         if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta") this.setStream(c, c.stream + ev.delta.text);
-        else if (ev?.type === "message_start") this.setStream(c, "", true);
+        else if (ev?.type === "message_start") {
+          // A turn Claude Code started by itself (a background job ended, and Claude carries on) is working all the same.
+          if (c.state.status === "ready") this.set(c, { status: "working" });
+          this.setStream(c, "", true);
+        }
         return;
       }
       case "assistant": {
@@ -535,8 +594,11 @@ export class ChatHost {
         this.setStream(c, "", true);
         c.idleSince = Date.now();
         const queued: number = m.queued_turn_count ?? 0;
-        // A stopped turn leaves its tools without results.
-        const items = c.state.items.map((i) => (i.kind === "tool" && i.state === "running" ? { ...i, state: "done" as const } : i));
+        this.settleBlocks(c, "The turn ended.");
+        // A stopped turn leaves its tools without results, and its blocks without answers.
+        const items = c.state.items.map((i) =>
+          i.kind !== "tool" ? i : { ...i, state: i.state === "running" ? ("done" as const) : i.state, ...(i.block?.state === "waiting" ? { block: settled(i.block, expiredOutcome("The turn ended without an answer.")) } : {}) },
+        );
         this.set(c, { status: queued ? "working" : "ready", activity: undefined, items });
         if (c.stopping) {
           c.stopping = false;
@@ -563,9 +625,101 @@ export class ChatHost {
 
   private who = () => this.opts.person ?? "The user";
 
+  private blocksOn = () => this.opts.blocks !== false;
+
+  /**
+   * A block waits for its answer: on its chat (the screens answer it with
+   * reply(), or words typed in the box), until it's answered, the turn stops,
+   * the session goes, its call is cancelled or `timeoutS` runs out.
+   */
+  private waitBlock(c: Chat, block: ChatBlock, signal?: AbortSignal, timeoutS?: number): Promise<BlockOutcome> {
+    return new Promise((resolve) => {
+      const p: PendingBlock = { block, finish: resolve };
+      if (timeoutS) {
+        const mins = Math.round(timeoutS / 60);
+        p.timer = setTimeout(() => this.settleBlock(c, block.id, expiredOutcome(`No answer after ${timeoutS < 90 ? `${Math.round(timeoutS)} seconds` : `${mins} minute${mins === 1 ? "" : "s"}`}.`)), timeoutS * 1000);
+      }
+      signal?.addEventListener("abort", () => this.settleBlock(c, block.id, expiredOutcome("Cancelled.")), { once: true });
+      c.blocks.set(block.id, p);
+      // Its row (the call's own) carries the block as it was checked here.
+      this.set(c, { items: c.state.items.map((i) => (i.kind === "tool" && i.id === block.id ? { ...i, block } : i)) });
+      this.notify(c, { kind: "needs", title: "Claude is waiting for you", detail: block.title ?? "Something to answer in the chat" });
+    });
+  }
+
+  /** A waiting block ends: its call gets the outcome, and its row shows it. */
+  private settleBlock(c: Chat, id: string, o: BlockOutcome) {
+    const p = c.blocks.get(id);
+    if (!p) return;
+    c.blocks.delete(id);
+    clearTimeout(p.timer);
+    p.finish(o);
+    this.set(c, { items: c.state.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, block: settled(i.block ?? p.block, o) } : i)) });
+    if (!c.asks.size && !c.blocks.size) this.notify(c);
+  }
+
+  private settleBlocks(c: Chat, reason: string) {
+    for (const id of [...c.blocks.keys()]) this.settleBlock(c, id, expiredOutcome(reason));
+  }
+
+  /** The newest await_feedback row still running with no block waiting on it: whose call it is when the SDK didn't say. */
+  private unclaimed(c: Chat): string | undefined {
+    for (let i = c.state.items.length - 1; i >= 0; i--) {
+      const it = c.state.items[i];
+      if (it.kind === "tool" && it.name === BLOCK_TOOL_NAME && it.state === "running" && !c.blocks.has(it.id)) return it.id;
+    }
+    return undefined;
+  }
+
+  /** await_feedback's handler: the spec checked (what's wrong goes back to Claude), then the wait, then the outcome as JSON. */
+  private async runBlock(c: Chat, args: Record<string, unknown>, extra: unknown): Promise<ToolResultLike> {
+    let spec: BlockSpec;
+    try {
+      spec = checkSpec(args);
+    } catch (e) {
+      return { content: [{ type: "text", text: (e as Error).message }], isError: true };
+    }
+    const x = (extra ?? {}) as { _meta?: Record<string, unknown>; signal?: AbortSignal };
+    const said = x._meta?.["claudecode/toolUseId"];
+    const id = (typeof said === "string" && said) || this.unclaimed(c) || this.nextId();
+    // Put up to look at: on its row as shown, and the call goes on at once.
+    if (args.wait === false) {
+      const block: ChatBlock = { ...spec, id, state: "shown" };
+      this.set(c, { items: c.state.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, block } : i)) });
+      return { content: [{ type: "text", text: outcomeText(shownOutcome) }] };
+    }
+    const timeoutS = typeof args.timeoutS === "number" && args.timeoutS > 0 ? args.timeoutS : undefined;
+    const o = await this.waitBlock(c, { ...spec, id, state: "waiting" }, x.signal, timeoutS);
+    return { content: [{ type: "text", text: outcomeText(o) }] };
+  }
+
+  /** The block tool's server, for one chat's session; undefined when the SDK can't host one (or zod isn't there). */
+  private async blockServer(c: Chat, sdk: AgentSdk): Promise<unknown> {
+    if (!this.blocksOn() || !sdk.createSdkMcpServer || !sdk.tool) return undefined;
+    let z: ZodLike;
+    try {
+      z = (await import("zod")).z as unknown as ZodLike;
+    } catch {
+      return undefined;
+    }
+    const t = sdk.tool(BLOCK_TOOL, BLOCK_TOOL_DESCRIPTION, blockToolShape(z), (args: Record<string, unknown>, extra: unknown) => this.runBlock(c, args, extra), {
+      alwaysLoad: true,
+      annotations: { title: "Ask in the chat", readOnlyHint: true, openWorldHint: false },
+    });
+    return sdk.createSdkMcpServer({ name: BLOCK_SERVER, version: "1.0.0", tools: [t], alwaysLoad: true });
+  }
+
+  /** AskUserQuestion as a questions block: answered, its answers go back as the tool's input; cut short, it's denied with why. */
+  private askQuestions(c: Chat, input: Record<string, unknown>, o: Parameters<CanUseToolLike>[2]): Promise<PermissionResultLike> | undefined {
+    const block = questionsBlock(o.toolUseID, input);
+    if (!block) return undefined;
+    return this.waitBlock(c, block, o.signal).then((out): PermissionResultLike => ("answered" in out ? { behavior: "allow", updatedInput: { ...input, answers: questionAnswers(block, out) } } : { behavior: "deny", message: "expired" in out ? out.reason : "No answer." }));
+  }
+
   private canUseTool =
     (c: Chat): CanUseToolLike =>
     (tool, input, o) =>
+      (tool === ASK_TOOL && this.blocksOn() ? this.askQuestions(c, input, o) : undefined) ??
       new Promise((resolve) => {
         const id = o.toolUseID;
         const ask: ChatAsk = {
@@ -574,9 +728,11 @@ export class ChatHost {
           title: o.title ?? `Claude wants to use ${tool}`,
           sub: o.description ?? o.decisionReason,
           detail: detailOf(input, 4000),
-          canAlways: Boolean(o.suggestions?.length) && !o.suppressAlwaysAllowRule,
+          canAlways: !o.suppressAlwaysAllowRule,
         };
-        c.asks.set(id, { ask, input, suggestions: o.suggestions, resolve });
+        // No rule suggested (MCP tools, mostly): Always allow is then the whole tool for the rest of the session.
+        const suggestions = o.suggestions?.length ? o.suggestions : [{ type: "addRules", rules: [{ toolName: tool }], behavior: "allow", destination: "session" }];
+        c.asks.set(id, { ask, input, suggestions, resolve });
         o.signal.addEventListener(
           "abort",
           () => {
@@ -609,7 +765,11 @@ export class ChatHost {
   }
 
   private systemAppend(): string | undefined {
-    const parts = [this.opts.systemPrompt !== undefined ? val(this.opts.systemPrompt) : "", this.opts.imagesNote === false ? "" : (this.opts.imagesNote ?? IMAGES_NOTE)];
+    const parts = [
+      this.opts.systemPrompt !== undefined ? val(this.opts.systemPrompt) : "",
+      this.opts.imagesNote === false ? "" : (this.opts.imagesNote ?? IMAGES_NOTE),
+      !this.blocksOn() || this.opts.blocksNote === false ? "" : (this.opts.blocksNote ?? BLOCKS_NOTE),
+    ];
     const text = parts.filter((p) => p.trim()).join(" ");
     return text || undefined;
   }
@@ -643,6 +803,9 @@ export class ChatHost {
     const inbox = new Inbox();
     const extra = this.opts.queryOptions?.({ id: c.id, folder }) ?? {};
     const mcp = this.opts.mcpServers !== undefined ? val(this.opts.mcpServers) : undefined;
+    const blocks = await this.blockServer(c, sdk);
+    if (g !== c.gen) return;
+    const servers = { ...((extra.mcpServers as Record<string, unknown> | undefined) ?? {}), ...(mcp ?? {}), ...(blocks ? { [BLOCK_SERVER]: blocks } : {}) };
     const append = this.systemAppend();
     let q: QueryLike;
     try {
@@ -657,9 +820,10 @@ export class ChatHost {
           allowDangerouslySkipPermissions: this.allows("bypassPermissions"),
           includePartialMessages: true,
           canUseTool: this.canUseTool(c),
-          // Its questions come as plain text instead; the chat has no form for them.
-          disallowedTools: [...new Set([...((extra.disallowedTools as string[] | undefined) ?? []), "AskUserQuestion"])],
-          ...(mcp ? { mcpServers: { ...((extra.mcpServers as Record<string, unknown> | undefined) ?? {}), ...mcp } } : {}),
+          // With blocks, AskUserQuestion's questions are a block (canUseTool) and await_feedback needs no asking; without, its questions come as plain text.
+          disallowedTools: [...new Set([...((extra.disallowedTools as string[] | undefined) ?? []), ...(blocks ? [] : [ASK_TOOL])])],
+          ...(blocks ? { allowedTools: [...new Set([...((extra.allowedTools as string[] | undefined) ?? []), BLOCK_TOOL_NAME])] } : {}),
+          ...(Object.keys(servers).length ? { mcpServers: servers } : {}),
           systemPrompt: append ? { type: "preset", preset: "claude_code", append } : { type: "preset", preset: "claude_code" },
           env: this.env(),
           stderr: (d: string) => (c.stderr = [...c.stderr, ...d.split(/\r?\n/).filter(Boolean)].slice(-20)),
@@ -678,6 +842,7 @@ export class ChatHost {
     void q
       .initializationResult()
       .then((r) => {
+        if (c.session?.q === q && !c.commands && r.commands) c.commands = r.commands;
         const next = r.models.map((m) => ({ value: m.value, name: m.displayName }));
         if (JSON.stringify(next) === JSON.stringify(this.models)) return;
         this.models = next;
@@ -702,6 +867,7 @@ export class ChatHost {
     if (c.session?.q !== q) return; // closed on purpose: closed, idle, a terminal, quitting
     c.session = undefined;
     this.settleAsks(c, "The session ended.");
+    this.settleBlocks(c, "The session ended.");
     this.setStream(c, "", true);
     if (resumed && !answered) {
       // The saved conversation couldn't be picked up (its transcript is gone): start a new one with what was sent.
@@ -711,7 +877,7 @@ export class ChatHost {
       c.early = resumed;
       return void this.open(c, true);
     }
-    this.set(c, { status: "error", activity: undefined, error: error ?? c.stderr.at(-1) ?? "Claude Code stopped." });
+    this.set(c, { status: "error", activity: undefined, jobs: undefined, error: error ?? c.stderr.at(-1) ?? "Claude Code stopped." });
   }
 
   private settleAsks(c: Chat, message: string) {
@@ -719,13 +885,62 @@ export class ChatHost {
     c.asks.clear();
   }
 
+  /** Claude Code's whole set of live background tasks (it sends it whenever one starts or ends): the chat's jobs, the ones that just ended kept a moment. */
+  private jobsNow(c: Chat, tasks: Array<Record<string, unknown>>) {
+    const was = new Map((c.state.jobs ?? []).map((j) => [j.id, j]));
+    const live = tasks
+      .filter((t) => typeof t.task_id === "string" && !t.ambient)
+      .map((t): ChatJob => {
+        const id = t.task_id as string;
+        const old = was.get(id);
+        const agent = typeof t.subagent_type === "string" ? t.subagent_type : old?.agent;
+        return { id, kind: String(t.task_type ?? "task"), ...(agent ? { agent } : {}), title: String(t.description || old?.title || "A background job"), ...(old?.line ? { line: old.line } : {}), since: old?.since ?? Date.now() };
+      });
+    const ids = new Set(live.map((j) => j.id));
+    // Gone from the set before its notification came (or without one): ended, which the notification then says how.
+    const gone = [...was.values()].filter((j) => !ids.has(j.id)).map((j) => (j.ended ? j : (this.dropJobLater(c, j.id), { ...j, ended: "completed" as const })));
+    if (!live.length && !gone.length && !was.size) return;
+    this.set(c, { jobs: [...live, ...gone] });
+  }
+
+  /** A job's progress: an agent's summary, or the tool it's on. */
+  private jobProgress(c: Chat, m: SdkMessage) {
+    const jobs = c.state.jobs ?? [];
+    if (!jobs.some((j) => j.id === m.task_id && !j.ended)) return;
+    const line: string | undefined = m.summary || (m.last_tool_name ? `Using ${toolLabel(String(m.last_tool_name))}` : undefined);
+    const ran = typeof m.usage?.duration_ms === "number" ? Date.now() - m.usage.duration_ms : undefined;
+    this.set(c, { jobs: jobs.map((j) => (j.id === m.task_id ? { ...j, ...(line ? { line } : {}), since: ran ? Math.min(j.since, ran) : j.since } : j)) });
+  }
+
+  /** A job ended (its task_notification): how, and its summary, for a moment before it goes. */
+  private jobEnded(c: Chat, id: string, status: string, summary?: string) {
+    const jobs = c.state.jobs ?? [];
+    const job = jobs.find((j) => j.id === id);
+    if (!job) return;
+    const ended = status === "failed" || status === "stopped" ? status : "completed";
+    if (!job.ended) this.dropJobLater(c, id);
+    this.set(c, { jobs: jobs.map((j) => (j.id === id ? { ...j, ended, ...(summary ? { line: summary } : {}) } : j)) });
+  }
+
+  private dropJobLater(c: Chat, id: string) {
+    const t = setTimeout(() => {
+      const jobs = c.state.jobs ?? [];
+      if (this.chats.has(c.id) && jobs.some((j) => j.id === id && j.ended)) this.set(c, { jobs: jobs.filter((j) => j.id !== id) });
+    }, JOB_LINGER_MS);
+    t.unref?.();
+  }
+
   private closeSession(c: Chat) {
     const s = c.session;
+    // Its jobs end with its process; whoever closed it says so with the change that follows.
+    if (c.state.jobs) c.state = { ...c.state, jobs: undefined };
     c.session = undefined;
     c.gen++;
     c.starting = undefined;
     this.settleAsks(c, `${this.who()} closed the session.`);
+    this.settleBlocks(c, `${this.who()} closed the session.`);
     c.stopping = false;
+    c.commands = undefined;
     this.setStream(c, "", true);
     s?.inbox.close();
     s?.q.close();
@@ -763,6 +978,13 @@ export class ChatHost {
   private say(c: Chat, text: string, images: Awaited<ReturnType<ChatHost["attach"]>> = [], files: ChatFile[] = []): ChatState {
     const t = text.trim();
     if (!t && !images.length && !files.length) throw new Error("Say something to send.");
+    // A block waiting: words alone answer it (the turn is waiting on it, so a message would only queue behind it); with images or files, it ends and the message goes.
+    const waiting = [...c.blocks.values()].at(-1);
+    if (waiting && t && !images.length && !files.length) {
+      this.settleBlock(c, waiting.block.id, outcomeOf(answerFor(waiting.block, { text: t })));
+      return this.stateOf(c);
+    }
+    this.settleBlocks(c, `${this.who()} sent a message instead.`);
     this.notify(c);
     // The files go to Claude as a list of paths after the words (it reads them with its tools); the screens show them as chips.
     const words = this.context.wrap([t, FileStore.trailer(files)].filter(Boolean).join("\n\n"), c.context);
@@ -791,6 +1013,7 @@ export class ChatHost {
     if (!c.session || c.state.status !== "working") return this.stateOf(c);
     c.stopping = true;
     this.settleAsks(c, `${this.who()} stopped this turn.`);
+    this.settleBlocks(c, `${this.who()} stopped this turn.`);
     await c.session.q.interrupt().catch(() => undefined);
     return this.stateOf(c);
   }
@@ -902,7 +1125,7 @@ export class ChatHost {
     return this.state();
   }
 
-  /** Allow, Always allow (Claude Code's suggested rule, for the rest of the session) or Deny, in whichever chat asked. */
+  /** Allow, Always allow (Claude Code's suggested rule, or else the whole tool, for the rest of the session) or Deny, in whichever chat asked. */
   answer(id: string, decision: AskDecision): ChatState {
     const c = [...this.chats.values()].find((x) => x.asks.has(id));
     const p = c?.asks.get(id);
@@ -916,6 +1139,61 @@ export class ChatHost {
     if (!c.asks.size) this.notify(c);
     this.changed(c);
     return this.stateOf(c);
+  }
+
+  /**
+   * Answers a waiting block, in whichever chat it's in: with its value (checked
+   * against it: a pick in range, an offered choice, a form's required fields),
+   * or words. Its call returns, and Claude goes on with the answer.
+   */
+  reply(id: string, answer: RawAnswer): ChatState {
+    const c = [...this.chats.values()].find((x) => x.blocks.has(id));
+    const p = c?.blocks.get(id);
+    if (!c || !p) throw new Error(`No block ${id} is waiting.`);
+    this.settleBlock(c, id, outcomeOf(answerFor(p.block, answer ?? {})));
+    return this.stateOf(c);
+  }
+
+  /**
+   * An app block's page: the ui:// resource its app's MCP server serves (MCP
+   * Apps), read through the chat's session, with its policy put first in its
+   * head (the spec's defaults and the domains it declared). Only a page a block
+   * in this chat asked for, and only while the session is up.
+   */
+  async appPage(ref: string, app: string, uri: string): Promise<AppPage> {
+    const c = this.find(ref);
+    if (!uri.startsWith("ui://")) throw new Error(`${uri} isn't an app page's address (ui://…).`);
+    const asks = (b?: ChatBlock) => b?.kind === uri && b.app === app;
+    if (![...c.blocks.values()].some((p) => asks(p.block)) && !c.state.items.some((i) => i.kind === "tool" && asks(i.block))) throw new Error(`Claude didn't ask for ${uri} in this chat.`);
+    const q = c.session?.q;
+    if (!q) throw new Error("This chat's session isn't running, so the app's page can't be read.");
+    if (!q.readMcpResource) throw new Error("This Claude Code can't read app pages; update @anthropic-ai/claude-agent-sdk.");
+    const r = await q.readMcpResource(app, uri);
+    const item = r.contents.find((x) => x.uri === uri) ?? r.contents[0];
+    const html = item?.text ?? (item?.blob ? Buffer.from(item.blob, "base64").toString("utf8") : undefined);
+    if (!html) throw new Error(`${app} sent no page for ${uri}.`);
+    const ui = (item._meta?.ui ?? {}) as { csp?: PageCsp; prefersBorder?: boolean };
+    return { html: withPolicy(html, ui.csp), prefersBorder: ui.prefersBorder };
+  }
+
+  /**
+   * A file an app block's page asked for (the bridge's file()): a path the
+   * block's props name, or a file in that path's folder or below it (a .gltf's
+   * .bin, an .obj's .mtl and textures, the parts a set's sidecar lists). Only
+   * for an app block in this chat, waiting or on its row; anything else is
+   * refused. Up to 512 MB.
+   */
+  async blockFile(ref: string, blockId: string, file: string): Promise<FileBytesOut> {
+    const c = this.find(ref);
+    const block = c.blocks.get(blockId)?.block ?? c.state.items.flatMap((i) => (i.kind === "tool" && i.block?.id === blockId ? [i.block] : []))[0];
+    if (!block) throw new Error(`No block ${blockId} in this chat.`);
+    if (!block.kind.startsWith("ui://")) throw new Error("Only an app's page reads files.");
+    const path = readablePath(file, block.props);
+    const st = await stat(path).catch(() => undefined);
+    if (!st?.isFile()) throw new Error(`${basename(path)} isn't there.`);
+    if (st.size > MAX_FILE_BYTES) throw new Error(`${basename(path)} is ${Math.round(st.size / 1024 / 1024)} MB, over the 512 MB a page reads.`);
+    const bytes = await readFile(path);
+    return { bytes, type: fileType(path), name: basename(path), size: bytes.length };
   }
 
   /** Continue in terminal: a chat's conversation in Claude Code in a terminal. The host lets go of it, and picks it back up from the transcript at its next message. */
@@ -948,8 +1226,8 @@ export class ChatHost {
     void c.session?.q.setModel(model || undefined).catch((e: Error) => this.note(c, `Couldn't change the model: ${e.message}`, true));
   }
 
-  /** A chat's mode or model. New chats take the last ones picked, unless the app sets their defaults itself. */
-  configure(ref: string | undefined, o: { mode?: ClaudeMode; model?: string }): ChatState {
+  /** A chat's mode, model or name. New chats take the last mode and model picked, unless the app sets their defaults itself; a blank name names it for its first message again. */
+  configure(ref: string | undefined, o: ChatSettings): ChatState {
     if (o.mode && !this.allows(o.mode)) throw new Error(`Chats here can't be put in ${o.mode} mode.`);
     const c = this.find(ref);
     if (o.mode) {
@@ -960,8 +1238,25 @@ export class ChatHost {
       this.setModel(c, o.model);
       this.picked = { ...this.picked, model: o.model };
     }
+    if (o.title !== undefined) {
+      c.title = firstLine(o.title, 60) || undefined;
+      this.titleFrom(c, c.state.items.find((i) => i.kind === "you")?.text);
+      this.changed(c);
+    }
     this.save();
     return this.stateOf(c);
+  }
+
+  /** The slash commands a chat's session takes, for the box's / menu. Its session starts if it isn't up (typing starts it anyway). */
+  async commands(ref?: string): Promise<ChatCommand[]> {
+    const c = this.find(ref);
+    await this.startChat(c);
+    const q = c.session?.q;
+    if (q && !c.commands && q.supportedCommands) {
+      const list = await q.supportedCommands().catch(() => undefined);
+      if (c.session?.q === q && !c.commands) c.commands = list;
+    }
+    return menuCommands(c.commands ?? [], this.terminalOnly);
   }
 
   /** The app's defaults changed (its settings): mode and model apply to the chat shown too; a new folder is for new chats, or the shown one if nothing's been said in it. */

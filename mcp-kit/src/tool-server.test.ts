@@ -18,6 +18,25 @@ async function harness(opts: Partial<Parameters<typeof createToolServer>[0]> & {
 }
 
 describe("createToolServer", () => {
+  it("serves resources from a table: listed without read, read with their own _meta", async () => {
+    const h = await harness({
+      tools: [{ name: "a", inputSchema: obj(), run: () => 1 }],
+      resources: [
+        { uri: "ui://app/picker", name: "Picker", mimeType: "text/html;profile=mcp-app", read: async () => ({ text: "<p>hi</p>", _meta: { ui: { prefersBorder: false } } }) },
+        { uri: "file:///x.bin", name: "Bytes", read: () => ({ blob: "AAEC", mimeType: "application/octet-stream" }) },
+      ],
+    });
+    const { resources } = await h.client.listResources();
+    assert.deepEqual(resources, [
+      { uri: "ui://app/picker", name: "Picker", mimeType: "text/html;profile=mcp-app" },
+      { uri: "file:///x.bin", name: "Bytes" },
+    ]);
+    assert.deepEqual((await h.client.readResource({ uri: "ui://app/picker" })).contents, [{ uri: "ui://app/picker", mimeType: "text/html;profile=mcp-app", text: "<p>hi</p>", _meta: { ui: { prefersBorder: false } } }]);
+    assert.deepEqual((await h.client.readResource({ uri: "file:///x.bin" })).contents, [{ uri: "file:///x.bin", mimeType: "application/octet-stream", blob: "AAEC" }]);
+    await assert.rejects(h.client.readResource({ uri: "ui://app/nope" }), /No resource ui:\/\/app\/nope/);
+    await h.close();
+  });
+
   it("lists every field but run, as the app wrote it", async () => {
     const h = await harness({
       tools: [

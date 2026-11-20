@@ -203,3 +203,136 @@ const round = (usd: number): number => Math.round(usd * 10_000) / 10_000;
 export function formatUsd(usd: number): string {
   return usd > 0 && usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 }
+
+// ---- Images: Nano Banana Pro, Nano Banana 2.1, Nano Banana 2 ----
+
+export type ImageSize = "1K" | "2K" | "4K";
+
+/** When the image models and prices were read (PRICES_SOURCE, aistudio.google.com/docs/models, /docs/image-generation). */
+export const IMAGE_PRICES_READ_ON = "2026-11-18";
+
+export interface ImageModelInfo {
+  id: string;
+  /** Short names the CLI and apps accept. */
+  aliases: string[];
+  label: string;
+  tier: "pro" | "flash";
+  stage: "ga" | "preview";
+  released?: string;
+  freeTier: boolean;
+}
+
+/**
+ * The image models, on 2026-11-18: all three Stable, none with a free tier. The previews
+ * (`gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`) shut down 2026-06-25. Google
+ * recommends Nano Banana 2.1 for new projects; Pro is the one that thinks hardest and keeps 5
+ * references at high fidelity.
+ */
+export const IMAGE_MODELS: readonly ImageModelInfo[] = [
+  { id: "gemini-3-pro-image", aliases: ["nano-banana-pro", "pro"], label: "Nano Banana Pro (Gemini 3 Pro Image)", tier: "pro", stage: "ga", freeTier: false },
+  { id: "gemini-nano-banana-2.1", aliases: ["nano-banana-2.1", "2.1", "banana-2.1"], label: "Nano Banana 2.1", tier: "flash", stage: "ga", released: "2026-10-06", freeTier: false },
+  { id: "gemini-3.1-flash-image", aliases: ["nano-banana-2", "flash"], label: "Nano Banana 2 (Gemini 3.1 Flash Image)", tier: "flash", stage: "ga", freeTier: false },
+];
+
+export const DEFAULT_IMAGE_MODEL = "gemini-3-pro-image";
+
+/** The model for an id or an alias (`models/` in front is fine; a retired preview id maps to its replacement), or undefined. */
+export function imageModel(model: string): ImageModelInfo | undefined {
+  const id = model.replace(/^models\//, "").trim().toLowerCase();
+  const renamed = id === "gemini-3-pro-image-preview" ? "gemini-3-pro-image" : id === "gemini-3.1-flash-image-preview" ? "gemini-nano-banana-2.1" : id;
+  return IMAGE_MODELS.find((m) => m.id === renamed || m.aliases.includes(renamed));
+}
+
+export interface ImagePrice {
+  model: string;
+  size: ImageSize;
+  /** US dollars an output image (Google's figure). */
+  usdPerImage: number;
+  /** Output image tokens an image of this size. */
+  tokensPerImage: number;
+}
+
+/** Per-1M-token prices, paid tier, Standard. `outputImage` prices the image tokens; thinking is billed as text output. */
+export const IMAGE_TOKEN_PRICES: Readonly<Record<string, { input: number; outputText: number; outputImage: number }>> = {
+  "gemini-3-pro-image": { input: 2, outputText: 12, outputImage: 120 },
+  "gemini-nano-banana-2.1": { input: 1.5, outputText: 7.5, outputImage: 30 },
+  "gemini-3.1-flash-image": { input: 0.5, outputText: 3, outputImage: 60 },
+};
+
+/** Pro: "Image input is set at 560 tokens or $0.0011 per image." The others give no count; this assumes Pro's. */
+export const INPUT_IMAGE_TOKENS = 560;
+
+const ip = (model: string, size: ImageSize, tokensPerImage: number, usdPerImage: number): ImagePrice => ({ model, size, tokensPerImage, usdPerImage });
+
+/**
+ * What an output image costs (PRICES_SOURCE, read IMAGE_PRICES_READ_ON). Draft images from thinking are
+ * not charged. Nano Banana 2.1 at 4K: the image page says 2,520 tokens, the pricing page 3,780 and
+ * $0.113 (which 3,780 × $30 per 1M matches); this takes the pricing page's.
+ */
+export const IMAGE_PRICES: readonly ImagePrice[] = [
+  ip("gemini-3-pro-image", "1K", 1120, 0.134),
+  ip("gemini-3-pro-image", "2K", 1120, 0.134),
+  ip("gemini-3-pro-image", "4K", 2000, 0.24),
+  ip("gemini-nano-banana-2.1", "1K", 1120, 0.0336),
+  ip("gemini-nano-banana-2.1", "2K", 1680, 0.0504),
+  ip("gemini-nano-banana-2.1", "4K", 3780, 0.113),
+  ip("gemini-3.1-flash-image", "1K", 1120, 0.067),
+  ip("gemini-3.1-flash-image", "2K", 1680, 0.101),
+  ip("gemini-3.1-flash-image", "4K", 2520, 0.151),
+];
+
+/** The price row for a model (any of its names) and size, or undefined. */
+export function imagePrice(model: string = DEFAULT_IMAGE_MODEL, size: ImageSize = "1K"): ImagePrice | undefined {
+  const id = imageModel(model)?.id ?? model;
+  return IMAGE_PRICES.find((p) => p.model === id && p.size === size);
+}
+
+export interface ImageCostInput {
+  model?: string;
+  size?: ImageSize;
+  /** Reference images sent with it. */
+  references?: number;
+}
+
+export interface ImageCost {
+  model: string;
+  size: ImageSize;
+  usd: number;
+  /** No price for this model: usd is 0 and means "unknown". */
+  unknown: boolean;
+}
+
+export interface ImageRunCost {
+  usd: number;
+  images: ImageCost[];
+  unknown: boolean;
+}
+
+/** An estimate for a run of images: each image's price plus its references at the input rate. The prompt's text and the thinking aren't counted (a cent or so). */
+export function estimateImageCost(images: readonly ImageCostInput[]): ImageRunCost {
+  const each = images.map((i): ImageCost => {
+    const size = i.size ?? "1K";
+    const id = imageModel(i.model ?? DEFAULT_IMAGE_MODEL)?.id ?? (i.model ?? DEFAULT_IMAGE_MODEL);
+    const p = imagePrice(id, size);
+    const t = IMAGE_TOKEN_PRICES[id];
+    const refs = t ? ((i.references ?? 0) * INPUT_IMAGE_TOKENS * t.input) / 1_000_000 : 0;
+    return { model: id, size, usd: p ? round(p.usdPerImage + refs) : 0, unknown: !p };
+  });
+  return { usd: round(each.reduce((s, c) => s + c.usd, 0)), images: each, unknown: each.some((c) => c.unknown) };
+}
+
+/**
+ * What a finished image cost, from the interaction's `usage`: image tokens at the image rate, other
+ * output and thinking at the text rate, input at the input rate. Without an image figure in
+ * `output_tokens_by_modality`, the size's row stands in. Undefined for a model without prices.
+ */
+export function costOfImageUsage(model: string, size: ImageSize, usage: UsageLike | undefined): { usd: number; imageTokens: number } | undefined {
+  const id = imageModel(model)?.id ?? model.replace(/^models\//, "");
+  const p = IMAGE_TOKEN_PRICES[id];
+  if (!p || !usage) return undefined;
+  const reported = (usage.output_tokens_by_modality ?? []).filter((m) => m.modality === "image").reduce((s, m) => s + (m.tokens ?? 0), 0);
+  const imageTokens = reported || (imagePrice(id, size)?.tokensPerImage ?? 0);
+  const otherOutput = Math.max(0, (usage.total_output_tokens ?? 0) - imageTokens);
+  const usd = (imageTokens * p.outputImage + (otherOutput + (usage.total_thought_tokens ?? 0)) * p.outputText + (usage.total_input_tokens ?? 0) * p.input) / 1_000_000;
+  return { usd: round(usd), imageTokens };
+}

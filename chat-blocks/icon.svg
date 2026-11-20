@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>chat-blocks: blocks Claude puts in a chat for you to answer</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9fb2ff" stop-opacity="0.30"/><stop offset="1" stop-color="#3d5fd1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3e9ff" stop-opacity="0.22"/><stop offset="1" stop-color="#9fb2ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="56" y1="60" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3e9ff"/><stop offset="0.5" stop-color="#9fb2ff"/><stop offset="1" stop-color="#3d5fd1"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="214" rx="72" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <!-- A frame: a title bar, three cards, the middle one picked. -->
+    <g transform="translate(0 6)" fill="#16224f"><rect x="52" y="58" width="152" height="140" rx="22"/></g>
+    <rect x="52" y="58" width="152" height="140" rx="22" fill="url(#face)"/>
+    <rect x="70" y="76" width="70" height="10" rx="5" fill="#16224f" fill-opacity="0.55"/>
+    <rect x="68" y="102" width="36" height="52" rx="8" fill="#16224f" fill-opacity="0.38"/>
+    <rect x="110" y="102" width="36" height="52" rx="8" fill="#16224f"/>
+    <rect x="152" y="102" width="36" height="52" rx="8" fill="#16224f" fill-opacity="0.38"/>
+    <path d="M119 128l6 6 12-13" fill="none" stroke="#e3e9ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="128" y="166" width="60" height="18" rx="9" fill="#16224f"/>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

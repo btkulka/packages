@@ -1,6 +1,7 @@
 // @btkulka/gemini-client: the Gemini API (Google AI Studio) for Ben's apps. An API key in; the models
-// list and video generation (Gemini Omni Flash through the Interactions API: start, get, wait, download),
-// with a per-second price table and cost estimates. Built on @btkulka/http-kit. Browser-safe: no node:*
+// list, video generation (Gemini Omni Flash through the Interactions API: start, get, wait, download)
+// and image generation (Nano Banana Pro and Nano Banana 2 through generateContent), with price tables
+// and cost estimates. Built on @btkulka/http-kit. Browser-safe: no node:*
 // imports, no Buffer. The Node-only CLI (`gemini-video`, src/cli) isn't exported here.
 // Source imports use .js extensions; no import.meta or top-level await (the CommonJS build needs neither).
 
@@ -47,6 +48,39 @@ export {
   type WaitOptions,
 } from "./video.js";
 export {
+  IMAGE_ASPECT_RATIOS,
+  IMAGE_SIZES,
+  imageApi,
+  imageBody,
+  MAX_REFERENCE_IMAGES,
+  outputImagesOf,
+  thoughtImagesOf,
+  type GeneratedImage,
+  type GenerateImageOptions,
+  type ImageApi,
+  type ImageAspectRatio,
+  type ImageInteractionBody,
+  type ImageRequest,
+  type ImageResult,
+  type ReferenceImage,
+} from "./image.js";
+export {
+  costOfImageUsage,
+  DEFAULT_IMAGE_MODEL,
+  estimateImageCost,
+  IMAGE_MODELS,
+  IMAGE_PRICES,
+  IMAGE_PRICES_READ_ON,
+  IMAGE_TOKEN_PRICES,
+  imageModel,
+  imagePrice,
+  INPUT_IMAGE_TOKENS,
+  type ImageCost,
+  type ImageCostInput,
+  type ImageModelInfo,
+  type ImagePrice,
+  type ImageRunCost,
+  type ImageSize,
   costOfUsage,
   DEFAULT_VIDEO_MODEL,
   DEPRECATIONS_SOURCE,

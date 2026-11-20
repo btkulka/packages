@@ -93,6 +93,10 @@
     "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
     "prepublishOnly": "npm run build"
   },
+  "dependencies": {
+    "@btkulka/chat-blocks": "^0.1.0",
+    "zod": "^4.3.6"
+  },
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18"

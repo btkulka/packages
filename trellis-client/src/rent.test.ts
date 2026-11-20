@@ -9,7 +9,7 @@ import { test } from "node:test";
 import type { RunPodClient } from "@btkulka/runpod-client";
 
 import { generate } from "./generate.js";
-import { bootScript, BOOT_CMD, COMFY_REV, PROXY_PY, RENT_TORCH, rentPlan } from "./rent.js";
+import { bootScript, BOOT_CMD, COMFY_REV, PROXY_PY, RENT_TORCH, rentPlan, rentRecord, rentRecordName, writeRentRecord } from "./rent.js";
 import { PIXAL3D_WEIGHTS, TRELLIS2_WEIGHTS } from "./weights.js";
 import type { ObjectInfo, UiWorkflow } from "./workflow.js";
 
@@ -59,6 +59,46 @@ test("rentPlan asks for CUDA 13 hosts and 40 GB by default, and sizes the deadli
   assert.equal(plan.maxMinutes, 35);
   assert.equal(plan.maxCostUsd, 0.2);
   assert.equal(plan.ok, true);
+});
+
+test("a run's record: the GPU, its price, start and end, the seconds billed, the dollars, the models; written beside them", () => {
+  const candidate = { gpu: "NVIDIA A100-SXM4-80GB", name: "A100 SXM", memory: 80, cloud: "COMMUNITY" as const, pricePerHour: 1.39 };
+  const startedAt = Date.parse("2026-11-18T23:15:00.000Z");
+  const endedAt = startedAt + 61 * 60_000 + 12_400;
+  const rec = rentRecord({ podId: "yimpz73zt0xkkx", candidate, startedAt, endedAt, models: ["sub", "top"], failures: [{ name: "vent", error: "terminated" }] });
+  assert.deepEqual(rec, {
+    kind: "runpod-rent",
+    tool: "@btkulka/trellis-client rent",
+    pod: "yimpz73zt0xkkx",
+    gpu: "A100 SXM",
+    gpuId: "NVIDIA A100-SXM4-80GB",
+    cloud: "COMMUNITY",
+    memoryGb: 80,
+    usdPerHour: 1.39,
+    start: "2026-11-18T23:15:00.000Z",
+    end: "2026-11-19T00:16:12.400Z",
+    secs: 3672,
+    usd: 1.42,
+    ok: false,
+    models: ["sub", "top"],
+    failures: [{ name: "vent", error: "terminated" }],
+  });
+  assert.equal(rentRecordName(endedAt), "rent-20261119T001612Z.json");
+  const stopped = rentRecord({ podId: "p", candidate, startedAt, endedAt: startedAt + 60_000, models: [], failures: [], error: "The rented GPU didn't come up: setup failed on the pod: torch" });
+  assert.equal(stopped.ok, false);
+  assert.match(stopped.error ?? "", /didn't come up/);
+  assert.equal(stopped.usd, 0.02);
+  assert.equal(rentRecord({ podId: "p", candidate, startedAt, endedAt, models: ["a"], failures: [] }).ok, true);
+  const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "trellis-record-")), "models", "gen");
+  try {
+    const file = writeRentRecord(dir, rec);
+    assert.equal(file, path.join(dir, "rent-20261119T001612Z.json"));
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), rec);
+    assert.equal(writeRentRecord(dir, rec), path.join(dir, "rent-20261119T001612Z-2.json"), "a second run ending the same second keeps the first");
+    assert.deepEqual(fs.readdirSync(dir).sort(), ["rent-20261119T001612Z-2.json", "rent-20261119T001612Z.json"]);
+  } finally {
+    fs.rmSync(path.dirname(path.dirname(dir)), { recursive: true, force: true });
+  }
 });
 
 const INFO: ObjectInfo = {

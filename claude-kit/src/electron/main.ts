@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { writeFileSync } from "node:fs";
 import type { ChatHost } from "../host/host.js";
 import type { ImageTools } from "../host/images.js";
-import type { AskDecision, ClaudeMode, NewChatFile, NewChatImage, NewChatOptions, ThumbSize } from "../types.js";
+import type { AskDecision, ChatSettings, NewChatFile, NewChatImage, NewChatOptions, RawAnswer, ThumbSize } from "../types.js";
 
 // @btkulka/claude-kit/electron/main: a ChatHost over Electron IPC. The
 // preload half (./preload) turns these channels back into a ClaudeTransport
@@ -78,8 +78,12 @@ export const channels = (prefix = "claude") => ({
   select: `${prefix}:select`,
   close: `${prefix}:close`,
   answer: `${prefix}:answer`,
+  reply: `${prefix}:reply`,
+  appPage: `${prefix}:appPage`,
+  file: `${prefix}:file`,
   terminal: `${prefix}:terminal`,
   configure: `${prefix}:configure`,
+  commands: `${prefix}:commands`,
   past: `${prefix}:past`,
   load: `${prefix}:load`,
   onList: `${prefix}:chats`,
@@ -106,8 +110,12 @@ export function attachIpc(host: ChatHost, o: AttachIpcOptions): () => void {
     [ch.select]: (chat: string) => host.select(chat),
     [ch.close]: (chat: string) => host.close(chat),
     [ch.answer]: (id: string, d: AskDecision) => host.answer(id, d),
+    [ch.reply]: (id: string, a: RawAnswer) => host.reply(id, a),
+    [ch.appPage]: (chat: string, app: string, uri: string) => host.appPage(chat, app, uri),
+    [ch.file]: (chat: string, block: string, ref: string) => host.blockFile(chat, block, ref),
     [ch.terminal]: (chat?: string) => host.terminal(chat),
-    [ch.configure]: (chat: string, c: { mode?: ClaudeMode; model?: string }) => host.configure(chat, c),
+    [ch.configure]: (chat: string, c: ChatSettings) => host.configure(chat, c),
+    [ch.commands]: (chat?: string) => host.commands(chat),
     [ch.past]: (query?: string, limit?: number) => host.past({ query, limit }),
     [ch.load]: (sessionId: string) => host.load(sessionId),
     [ch.saveImage]: async (ref: string, s?: { folder?: string; name?: string }) => {

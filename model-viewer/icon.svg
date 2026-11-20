@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>model-viewer: 3D models on disk, turned, lit and pictured with three.js</title>
+  <defs>
+    <clipPath id="sq"><rect width="256" height="256" rx="57"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d22"/><stop offset="1" stop-color="#040405"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="128" cy="124" r="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7cb8ff" stop-opacity="0.30"/><stop offset="1" stop-color="#2f6db5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx="128" cy="62" r="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3f0ff" stop-opacity="0.22"/><stop offset="1" stop-color="#7cb8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="face" x1="64" y1="56" x2="192" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3f0ff"/><stop offset="0.5" stop-color="#7cb8ff"/><stop offset="1" stop-color="#2f6db5"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <!-- The glyph: a cube seen from three-quarters (its top lit, its sides shaded), with the orbit it turns on. -->
+    <g id="glyph">
+      <path d="M128 58l58 33-58 33-58-33z"/>
+      <path d="M70 99l52 30v66l-52-30z" opacity="0.72"/>
+      <path d="M186 99l-52 30v66l52-30z" opacity="0.5"/>
+      <path fill-rule="evenodd" d="M128 196c-46 0-82-12-82-27 0-8 10-15 26-20l2 9c-12 4-18 8-18 11 0 8 30 17 72 17s72-9 72-17c0-3-6-7-18-11l2-9c16 5 26 12 26 20 0 15-36 27-82 27z" opacity="0.55"/>
+    </g>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <rect width="256" height="256" fill="url(#halo)"/>
+    <ellipse cx="128" cy="214" rx="64" ry="10" fill="#000000" opacity="0.6" filter="url(#blur)"/>
+    <use href="#glyph" transform="translate(0 8)" fill="#0f2a4d"/>
+    <use href="#glyph" fill="url(#face)"/>
+    <rect width="256" height="256" fill="url(#pool)"/>
+    <rect x="0.5" y="0.5" width="255" height="255" rx="56.5" fill="none" stroke="url(#edge)" stroke-width="1"/>
+  </g>
+</svg>

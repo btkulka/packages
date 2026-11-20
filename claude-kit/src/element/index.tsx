@@ -4,7 +4,12 @@ import type { NewChatOptions } from "../types.js";
 import { ClaudeProvider } from "../react/context.js";
 import { askClaude, ClaudeWidget } from "../react/widget.js";
 // The stylesheet as text (esbuild's text loader), for the shadow root.
-import css from "../styles.css";
+import kit from "../styles.css";
+import frame from "@btkulka/chat-blocks/frame.css";
+
+/** The kit's stylesheet with chat-blocks' frame after it (blocks), as dist/styles.css has them. */
+const css = `${kit}
+${frame}`;
 
 // <claude-widget>: the corner button and its drawer for a page without React
 // (an express + EJS app). React rides inside this bundle, and the widget lives

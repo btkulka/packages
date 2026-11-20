@@ -1,26 +1,26 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { swipe } from "@btkulka/chat-blocks/swipe";
 import { asBytes } from "../bytes.js";
 import type { ClaudeTransport } from "../types.js";
 import { useTransport, useUi } from "./context.js";
+import { pickedAt, type Pic } from "./picks.js";
 import { DownloadIcon, ImageIcon } from "./primitives.js";
+import { useStar } from "./stars.js";
 
 // A chat's images (the host keeps them, host/images.ts): what's attached,
 // what a tool hands back, what Claude shows as markdown. Each draws as a
-// thumbnail; a click opens the lightbox (←/→ through the chat's images, a
-// swipe on a phone; Esc closes), and Download saves a copy: through the host's
-// Save dialog when it has one, else as the browser's own download.
+// thumbnail; a click opens the lightbox (←/→ through the chat's images, or a
+// swipe: a finger, a mouse drag or a trackpad; Esc closes), and Download saves a copy: through the host's
+// Save dialog when it has one, else as the browser's own download. Two or more
+// in a row in a reply are a carousel instead, its lightbox stepping through
+// just those: something to look at. A carousel picks only in a pick block
+// (onPick); a star (the transport's, Gallery's in Benhäus) marks files on either.
 
-/** An image in the conversation: a kept image's id, or the path or address a reply named. */
-export interface Pic {
-  ref: string;
-  /** Its file name, which Download starts from. */
-  name?: string;
-  /** What a reply called it (markdown's alt text). */
-  alt?: string;
-}
+export type { Pic };
 
-const label = (p: Pic) => p.alt || p.name || "Image";
+/** What an image is called: its caption, its name, else its file's name (not a data: address's). */
+const label = (p: Pic) => p.alt || p.name || (/^data:/i.test(p.ref) ? "" : (p.ref.split(/[\\/]/).pop() ?? "")) || "Image";
 
 /** Addresses the window can draw as they are. */
 const direct = (ref: string) => /^(https?:|data:image\/|blob:)/i.test(ref);
@@ -111,14 +111,20 @@ export function useDownload() {
   };
 }
 
-/** The chat a thumbnail sits in: its folder (a reply's relative paths) and its lightbox. */
-export const PicsContext = createContext<{ folder?: string; open: (p: Pic) => void }>({ open: () => undefined });
-
-const MD_IMAGE = /!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
-/** A markdown image's address: without <…> around it or a "title" after it. */
-export const mdSrc = (raw: string) => raw.trim().replace(/^<(.*)>$/, "$1").replace(/\s+"[^"]*"$/, "");
-/** The images a reply shows, outside its code blocks. */
-export const picsIn = (text: string): Pic[] => [...text.replace(/```[\s\S]*?```/g, "").matchAll(MD_IMAGE)].map((m) => ({ ref: mdSrc(m[2]), alt: m[1] || undefined }));
+/** The chat a thumbnail sits in: its folder (a reply's relative paths), its lightbox, and its carousels' picks. */
+export const PicsContext = createContext<{
+  folder?: string;
+  open: (p: Pic) => void;
+  /**
+   * A carousel's image, large: the lightbox steps through its set only, with its Pick (`onPick`) and what's picked.
+   * `toggle`: Pick picks and unpicks (a block's several to pick). Without it, open() does.
+   */
+  openSet?: (pics: Pic[], at: number, o?: { onPick?: (i: number) => void; picked?: readonly number[]; toggle?: boolean }) => void;
+  /** Pick: sends Ben's choice from a carousel as his message. Without it, a carousel has no Pick. */
+  pick?: (pics: Pic[], at: number) => void;
+  /** Each carousel's pick so far (picks.ts's picksIn): its key to the picked image's address. */
+  picks?: ReadonlyMap<string, string>;
+}>({ open: () => undefined });
 
 /** A thumbnail in the conversation: a click opens it large, the corner button saves a copy. */
 export function Thumb({ pic, size = "md" }: { pic: Pic; size?: "md" | "lg" }) {
@@ -144,33 +150,205 @@ export function Thumb({ pic, size = "md" }: { pic: Pic; size?: "md" | "lg" }) {
   );
 }
 
-const Chevron = ({ left }: { left?: boolean }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+const Chevron = ({ left, size = 18 }: { left?: boolean; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d={left ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"} />
   </svg>
 );
 
-/** The lightbox: one image as large as the window allows, the chat's others a key away. */
-export function Lightbox({ pics, at, folder, onClose }: { pics: Pic[]; at: number; folder?: string; onClose: () => void }) {
+const CheckIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </svg>
+);
+
+const StarIcon = ({ on, size = 14 }: { on?: boolean; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z" />
+  </svg>
+);
+
+/** A file's star, as a small button: on a card, in the lightbox. Nothing where stars can't go. */
+function StarButton({ pic, className }: { pic: Pic; className: string }) {
+  const star = useStar(pic.ref);
+  if (!star.can) return null;
+  const name = label(pic);
+  return (
+    <button type="button" className={`${className}${star.on ? " is-on" : ""}`} aria-pressed={!!star.on} title={star.on ? "Starred: press to take the star off" : "Star it (kept in Gallery)"} aria-label={`${star.on ? "Unstar" : "Star"} ${name}`} onClick={star.toggle}>
+      <StarIcon on={star.on} />
+    </button>
+  );
+}
+
+/** A card of a carousel: the image (a click opens the lightbox on the set), its caption, its place in the set, its star, and in a pick block Pick, or a check once it's the pick (with `toggle`, a press takes it back). */
+function Card({ pic, nth, picked, onOpen, onPick, toggle }: { pic: Pic; nth: string; picked: boolean; onOpen: () => void; onPick?: () => void; toggle?: boolean }) {
+  const { folder } = useContext(PicsContext);
+  const { url, error } = useImageUrl(pic.ref, folder, "md");
+  const download = useDownload();
+  const name = label(pic);
+  return (
+    <figure className={`ck-card${picked ? " is-picked" : ""}`} role="group" aria-roledescription="slide" aria-label={`${nth}: ${name}${picked ? " (picked)" : ""}`}>
+      <button type="button" className="ck-card__open" title={name} aria-label={`Open ${name} large, ${nth}`} onClick={onOpen}>
+        {error ? (
+          <span className="ck-card__broken" title={error}>
+            <ImageIcon size={20} />
+          </span>
+        ) : url ? (
+          <img src={url} alt={name} draggable={false} />
+        ) : (
+          <span className="ck-pic__wait" />
+        )}
+      </button>
+      {picked && (
+        <span className="ck-card__check" title="Picked" aria-hidden="true">
+          <CheckIcon size={13} />
+        </span>
+      )}
+      {!error && (
+        <button type="button" className="ck-pic__save" aria-label={`Download ${name}`} title="Download" onClick={() => download(pic, folder)}>
+          <DownloadIcon />
+        </button>
+      )}
+      <figcaption className="ck-card__foot">
+        <span className="ck-card__cap" title={name}>
+          {name}
+        </span>
+        <span className="ck-row ck-card__meta">
+          <span className="ck-caption ck-ink3">{nth}</span>
+          <span className="ck-grow" />
+          <StarButton pic={pic} className="ck-iconbtn ck-card__star" />
+          {onPick &&
+            (picked && toggle ? (
+              <button type="button" className="ck-chip ck-card__pick is-on" title="Picked: press to take it back" aria-pressed="true" aria-label={`Picked ${nth}: ${name}. Unpick`} onClick={onPick}>
+                <CheckIcon size={12} />
+                Picked
+              </button>
+            ) : picked ? (
+              <span className="ck-card__picked">
+                <CheckIcon size={12} />
+                Picked
+              </span>
+            ) : (
+              <button type="button" className="ck-chip ck-card__pick" title={toggle ? "Pick this one (sent with Submit)" : "Pick this one: tells Claude it's your choice"} aria-pressed={toggle ? false : undefined} aria-label={`Pick ${nth}: ${name}`} onClick={onPick}>
+                Pick
+              </button>
+            ))}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/**
+ * Two or more images in a row in a reply: a strip of cards (CarouselView), to
+ * look at. A card opens the lightbox on this set alone. A host that passes
+ * `pick` gets Pick there and on the cards, sent as Ben's message; Benhäus doesn't
+ * (a pick that matters is a pick block), and a pick an older chat sent shows checked.
+ */
+export function Carousel({ pics }: { pics: Pic[] }) {
+  const { pick, picks } = useContext(PicsContext);
+  const at = pickedAt(pics, picks);
+  return <CarouselView pics={pics} picked={at === undefined ? NONE : [at]} onPick={pick ? (i) => pick(pics, i) : undefined} />;
+}
+
+const NONE: readonly number[] = [];
+
+/**
+ * A strip of cards that scrolls and snaps sideways (‹ › a card at a time),
+ * narrow enough for the panel, the `picked` ones outlined and checked. A card
+ * opens the lightbox on this set alone; Pick, there or on a card, is `onPick`
+ * (none: no Pick). `toggle`: a picked card's Pick takes it back.
+ */
+export function CarouselView({ pics, picked, onPick, toggle, label: name }: { pics: Pic[]; picked: readonly number[]; onPick?: (i: number) => void; toggle?: boolean; label?: string }) {
+  const { open, openSet } = useContext(PicsContext);
+  const strip = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState({ start: true, end: true });
+  const first = picked[0];
+  const edges = () => {
+    const el = strip.current;
+    if (el) setEnds({ start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    edges();
+    const ro = new ResizeObserver(edges);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pics.length]);
+  // The pick in view when it's out of it (scrolled past, or drawn again from the start), without moving the conversation.
+  useLayoutEffect(() => {
+    const el = strip.current;
+    const card = first === undefined ? undefined : (el?.children[first] as HTMLElement | undefined);
+    if (!el || !card) return;
+    if (card.offsetLeft < el.scrollLeft || card.offsetLeft + card.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = card.offsetLeft - 2;
+  }, [first]);
+  const step = (by: number) => {
+    const el = strip.current;
+    const card = el?.firstElementChild as HTMLElement | null | undefined;
+    if (!el || !card) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollBy({ left: by * (card.offsetWidth + 8), behavior: still ? "auto" : "smooth" });
+  };
+  return (
+    <div className="ck-carousel" role="group" aria-roledescription="carousel" aria-label={`${name ? `${name}: ` : ""}${pics.length} images${onPick ? (toggle ? ", pick any" : ", pick one") : ""}`}>
+      <div ref={strip} className="ck-carousel__strip" onScroll={edges}>
+        {pics.map((p, i) => (
+          <Card
+            key={`${p.ref}:${i}`}
+            pic={p}
+            nth={`${i + 1} of ${pics.length}`}
+            picked={picked.includes(i)}
+            toggle={toggle}
+            onOpen={() => (openSet ? openSet(pics, i, { onPick, picked, toggle }) : open(p))}
+            onPick={onPick ? () => onPick(i) : undefined}
+          />
+        ))}
+      </div>
+      <button type="button" className={`ck-carousel__nav is-prev${ends.start ? " is-off" : ""}`} title="Previous image" aria-label="Previous image" onClick={() => step(-1)}>
+        <Chevron left size={14} />
+      </button>
+      <button type="button" className={`ck-carousel__nav is-next${ends.end ? " is-off" : ""}`} title="Next image" aria-label="Next image" onClick={() => step(1)}>
+        <Chevron size={14} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The lightbox: one image as large as the window allows, the chat's others (or a carousel's) a key away. With
+ * `onPick` (a carousel's set) it offers Pick, which Enter presses too, and shows the set's `picked` one as picked.
+ */
+export function Lightbox({ pics, at, folder, onClose, onPick, picked, toggle }: { pics: Pic[]; at: number; folder?: string; onClose: () => void; onPick?: (i: number) => void; picked?: number | readonly number[]; toggle?: boolean }) {
   const [i, setI] = useState(at);
   const pic = pics[i] ?? pics[0];
   const { url, error } = useImageUrl(pic.ref, folder);
+  const root = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const ui = useUi();
   const download = useDownload();
   const Button = ui.c.Button;
   const done = useRef(onClose);
   done.current = onClose;
+  const isPicked = onPick !== undefined && (typeof picked === "number" ? [picked] : (picked ?? [])).includes(i);
+  const pickNow = useRef<(() => void) | undefined>(undefined);
+  pickNow.current = onPick && (!isPicked || toggle) ? () => onPick(i) : undefined;
   const many = pics.length > 1;
   const go = (by: number) => setI((n) => (n + by + pics.length) % pics.length);
 
-  useEffect(() => close.current?.focus({ preventScroll: true }), []);
-  // Its keys come first: Esc here closes the lightbox, not the panel.
+  // Pick has the focus when there's one to press (Enter picks), else Close.
+  useEffect(() => {
+    const first = root.current?.querySelector<HTMLElement>("[data-ck-pick]:not(:disabled)") ?? close.current;
+    first?.focus({ preventScroll: true });
+  }, []);
+  // Its keys come first: Esc here closes the lightbox, not the panel. Enter picks, unless it's on another of its buttons.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      const onButton = e.target instanceof Element && e.target.closest("button, a, input, textarea, select");
       if (e.key === "Escape") done.current();
       else if (many && e.key === "ArrowLeft") go(-1);
       else if (many && e.key === "ArrowRight") go(1);
+      else if (e.key === "Enter" && !onButton && !e.repeat && pickNow.current) pickNow.current();
       else return;
       e.preventDefault();
       e.stopPropagation();
@@ -179,31 +357,28 @@ export function Lightbox({ pics, at, folder, onClose }: { pics: Pic[]; at: numbe
     return () => window.removeEventListener("keydown", key, true);
   }, [many, pics.length]);
 
-  const away = (e: React.PointerEvent) => e.target === e.currentTarget && onClose();
-  // A finger's ←/→: a sideways swipe across the picture steps through the chat's images.
-  const from = useRef<{ x: number; y: number } | undefined>(undefined);
-  const swipe = {
-    onTouchStart: (e: React.TouchEvent) => void (from.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : undefined),
-    onTouchEnd: (e: React.TouchEvent) => {
-      const a = from.current;
-      const b = e.changedTouches[0];
-      from.current = undefined;
-      if (!many || !a || !b) return;
-      const dx = b.clientX - a.x;
-      if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(b.clientY - a.y) * 1.5) go(dx < 0 ? 1 : -1);
-    },
-  };
+  const away = (e: React.PointerEvent | React.MouseEvent) => e.target === e.currentTarget && onClose();
+  // ←/→ by swiping across the picture: a finger, a mouse drag or a trackpad. The picture follows the drag. A
+  // click on the dark around it closes (a click, so a drag that starts there swipes instead).
+  const stage = useRef<HTMLDivElement>(null);
+  const goRef = useRef(go);
+  goRef.current = go;
+  useEffect(() => {
+    const el = stage.current;
+    if (!el || !many) return;
+    return swipe(el, { onSwipe: (d) => goRef.current(d), follow: el.firstElementChild as HTMLElement | null });
+  }, [many, url]);
   return createPortal(
-    <div className="ck-root ck-lightbox" role="dialog" aria-modal="true" aria-label={label(pic)}>
-      <div className="ck-lightbox__stage" onPointerDown={away} {...swipe}>
+    <div ref={root} className="ck-root ck-lightbox" role="dialog" aria-modal="true" aria-label={label(pic)}>
+      <div ref={stage} className="ck-lightbox__stage" onClick={away}>
         {error ? <p className="ck-callout ck-ink2">{error}</p> : url ? <img src={url} alt={label(pic)} /> : <p className="ck-thinking">Loading…</p>}
       </div>
       {many && (
         <>
-          <button type="button" className="ck-lightbox__nav is-prev" aria-label="Previous image" onClick={() => go(-1)}>
+          <button type="button" className="ck-lightbox__nav is-prev" title="Previous image (←)" aria-label="Previous image" onClick={() => go(-1)}>
             <Chevron left />
           </button>
-          <button type="button" className="ck-lightbox__nav is-next" aria-label="Next image" onClick={() => go(1)}>
+          <button type="button" className="ck-lightbox__nav is-next" title="Next image (→)" aria-label="Next image" onClick={() => go(1)}>
             <Chevron />
           </button>
         </>
@@ -216,10 +391,25 @@ export function Lightbox({ pics, at, folder, onClose }: { pics: Pic[]; at: numbe
           </span>
         )}
         <span className="ck-grow" />
-        <Button variant="primary" size="sm" onClick={() => download(pic, folder)}>
+        <StarButton pic={pic} className="ck-iconbtn ck-lightbox__star" />
+        {onPick && (
+          <Button
+            variant="primary"
+            size="sm"
+            data-ck-pick=""
+            disabled={isPicked && !toggle}
+            aria-pressed={toggle ? isPicked : undefined}
+            title={isPicked ? (toggle ? "Picked: press to take it back (Enter)" : "You picked this one") : toggle ? "Pick this one (Enter), sent with Submit" : "Pick this one (Enter): tells Claude it's your choice"}
+            aria-label={isPicked ? `Picked: ${label(pic)}${toggle ? ". Unpick" : ""}` : `Pick ${i + 1} of ${pics.length}: ${label(pic)}`}
+            onClick={() => pickNow.current?.()}
+          >
+            {isPicked ? "✓ Picked" : "Pick"}
+          </Button>
+        )}
+        <Button variant={onPick ? "glass" : "primary"} size="sm" title="Save a copy" aria-label={`Download ${label(pic)}`} onClick={() => download(pic, folder)}>
           Download
         </Button>
-        <button ref={close} type="button" className="ck-iconbtn" aria-label="Close" onClick={onClose}>
+        <button ref={close} type="button" className="ck-iconbtn" title="Close (Esc)" aria-label="Close" onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>

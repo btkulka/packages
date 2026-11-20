@@ -2,7 +2,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
   type CallToolResult,
   type ServerCapabilities,
   type ServerNotification,
@@ -41,6 +43,29 @@ export interface ToolSpec {
   [key: string]: unknown;
 }
 
+/** What a resource's read gives: its text (or base64 blob), and its own _meta (an MCP Apps page's ui.csp). */
+export interface ResourceContents {
+  text?: string;
+  blob?: string;
+  mimeType?: string;
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * A resource the server serves: what resources/list shows, and how to read it.
+ * An app's block page (an MCP Apps ui:// page, @btkulka/chat-blocks'
+ * blockResource) is one: `{ uri: "ui://gallery/picker", name: "Picker", mimeType: MCP_APP_MIME, read: () => blockResource(uri, html) }`.
+ */
+export interface ResourceSpec {
+  uri: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  _meta?: Record<string, unknown>;
+  read(): ResourceContents | Promise<ResourceContents>;
+}
+
 export interface ToolServerOptions {
   name: string;
   version: string;
@@ -48,6 +73,8 @@ export interface ToolServerOptions {
   /** Merged over `{ tools: {} }`, e.g. `{ resources: {} }` or `{ tools: { listChanged: true } }`. */
   capabilities?: ServerCapabilities;
   tools: ToolSpec[];
+  /** Resources to serve (resources/list and resources/read, and the capability). Leave out to add your own handlers instead. */
+  resources?: ResourceSpec[];
   /** The handler for tools without `run`, e.g. an app's existing switch or router. */
   call?(name: string, args: Record<string, unknown>, ctx: ToolContext): unknown;
   /** Check arguments against the tool's inputSchema first (`checkArgs`); a problem returns `error("<tool>: <problem>")`. Default false. */
@@ -85,10 +112,21 @@ export function createToolServer(opts: ToolServerOptions): Server {
 
   const server = new Server(
     { name: opts.name, version: opts.version },
-    { capabilities: { tools: {}, ...opts.capabilities }, ...(opts.instructions ? { instructions: opts.instructions } : {}) },
+    { capabilities: { tools: {}, ...(opts.resources?.length ? { resources: {} } : {}), ...opts.capabilities }, ...(opts.instructions ? { instructions: opts.instructions } : {}) },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listed }));
+
+  if (opts.resources?.length) {
+    const resources = new Map(opts.resources.map((r) => [r.uri, r]));
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [...resources.values()].map(({ read: _read, ...r }) => r) }));
+    server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
+      const r = resources.get(req.params.uri);
+      if (!r) throw new Error(`No resource ${req.params.uri}.`);
+      const c = await r.read();
+      return { contents: [{ uri: r.uri, mimeType: c.mimeType ?? r.mimeType, ...(c.blob !== undefined ? { blob: c.blob } : { text: c.text ?? "" }), ...(c._meta ? { _meta: c._meta } : {}) }] };
+    });
+  }
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const name = req.params.name;
