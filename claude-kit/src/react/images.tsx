@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { swipe } from "@btkulka/chat-blocks/swipe";
 import { asBytes } from "../bytes.js";
@@ -254,45 +254,16 @@ export function Carousel({ pics }: { pics: Pic[] }) {
 const NONE: readonly number[] = [];
 
 /**
- * A strip of cards that scrolls and snaps sideways (‹ › a card at a time),
- * narrow enough for the panel, the `picked` ones outlined and checked. A card
- * opens the lightbox on this set alone; Pick, there or on a card, is `onPick`
- * (none: no Pick). `toggle`: a picked card's Pick takes it back.
+ * A set of cards that wraps to the chat's width (the chat never scrolls
+ * sideways), the `picked` ones outlined and checked. A card opens the
+ * lightbox on this set alone, which steps through them; Pick, there or on a
+ * card, is `onPick` (none: no Pick). `toggle`: a picked card's Pick takes it back.
  */
 export function CarouselView({ pics, picked, onPick, toggle, label: name }: { pics: Pic[]; picked: readonly number[]; onPick?: (i: number) => void; toggle?: boolean; label?: string }) {
   const { open, openSet } = useContext(PicsContext);
-  const strip = useRef<HTMLDivElement>(null);
-  const [ends, setEnds] = useState({ start: true, end: true });
-  const first = picked[0];
-  const edges = () => {
-    const el = strip.current;
-    if (el) setEnds({ start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
-  };
-  useEffect(() => {
-    const el = strip.current;
-    if (!el) return;
-    edges();
-    const ro = new ResizeObserver(edges);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [pics.length]);
-  // The pick in view when it's out of it (scrolled past, or drawn again from the start), without moving the conversation.
-  useLayoutEffect(() => {
-    const el = strip.current;
-    const card = first === undefined ? undefined : (el?.children[first] as HTMLElement | undefined);
-    if (!el || !card) return;
-    if (card.offsetLeft < el.scrollLeft || card.offsetLeft + card.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = card.offsetLeft - 2;
-  }, [first]);
-  const step = (by: number) => {
-    const el = strip.current;
-    const card = el?.firstElementChild as HTMLElement | null | undefined;
-    if (!el || !card) return;
-    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    el.scrollBy({ left: by * (card.offsetWidth + 8), behavior: still ? "auto" : "smooth" });
-  };
   return (
     <div className="ck-carousel" role="group" aria-roledescription="carousel" aria-label={`${name ? `${name}: ` : ""}${pics.length} images${onPick ? (toggle ? ", pick any" : ", pick one") : ""}`}>
-      <div ref={strip} className="ck-carousel__strip" onScroll={edges}>
+      <div className="ck-carousel__strip">
         {pics.map((p, i) => (
           <Card
             key={`${p.ref}:${i}`}
@@ -305,12 +276,6 @@ export function CarouselView({ pics, picked, onPick, toggle, label: name }: { pi
           />
         ))}
       </div>
-      <button type="button" className={`ck-carousel__nav is-prev${ends.start ? " is-off" : ""}`} title="Previous image" aria-label="Previous image" onClick={() => step(-1)}>
-        <Chevron left size={14} />
-      </button>
-      <button type="button" className={`ck-carousel__nav is-next${ends.end ? " is-off" : ""}`} title="Next image" aria-label="Next image" onClick={() => step(1)}>
-        <Chevron size={14} />
-      </button>
     </div>
   );
 }

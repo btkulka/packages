@@ -244,7 +244,9 @@
 .ck-chatdot.is-alert { background: var(--ck-alert); }
 
 .ck-view { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.ck-log { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; user-select: text; }
+/* The chat never scrolls sideways: everything in it fits its width (code and tables wrap; a carousel's own strip is the one thing that swipes). */
+.ck-log { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; user-select: text; }
+.ck-log > * { min-width: 0; max-width: 100%; }
 .ck-you { align-self: flex-end; max-width: 85%; padding: 9px 14px; border-radius: 18px 18px 6px 18px; background: var(--ck-surface-3); color: var(--ck-ink); font: 400 14px/20px var(--ck-font); white-space: pre-wrap; overflow-wrap: anywhere; }
 .ck-mine { align-self: flex-end; max-width: 85%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .ck-mine .ck-you { max-width: 100%; }
@@ -258,16 +260,16 @@
 .ck-path { display: inline; font: 500 12.5px/1.4 var(--ck-mono); color: var(--ck-ink); text-align: left; overflow-wrap: anywhere; text-decoration: underline 1px var(--ck-ink-3); text-underline-offset: 3px; }
 .ck-prose a:hover, .ck-root .ck-path:hover { text-decoration-color: var(--ck-accent); }
 .ck-codewrap { position: relative; }
-.ck-code, .ck-result { margin: 0; font: 400 12px/18px var(--ck-mono); color: var(--ck-ink-2); background: var(--ck-code-bg); border: 1px solid var(--ck-stroke); border-radius: 12px; padding: 10px 12px; overflow: auto; white-space: pre; tab-size: 2; }
+.ck-code, .ck-result { margin: 0; font: 400 12px/18px var(--ck-mono); color: var(--ck-ink-2); background: var(--ck-code-bg); border: 1px solid var(--ck-stroke); border-radius: 12px; padding: 10px 12px; overflow-x: hidden; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
 .ck-code code { padding: 0; background: none; font: inherit; }
-.ck-tablewrap { max-width: 100%; overflow: auto; border: 1px solid var(--ck-stroke); border-radius: 12px; background: var(--ck-surface-2); }
+.ck-tablewrap { max-width: 100%; overflow-x: hidden; border: 1px solid var(--ck-stroke); border-radius: 12px; background: var(--ck-surface-2); }
 .ck-table { width: 100%; border-collapse: collapse; }
-.ck-table th, .ck-table td { padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: normal; }
-.ck-table th { font: 600 11px/14px var(--ck-font); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ck-ink-3); white-space: nowrap; border-bottom: 1px solid var(--ck-stroke-strong); }
+.ck-table th, .ck-table td { padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.ck-table th { font: 600 11px/14px var(--ck-font); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ck-ink-3); border-bottom: 1px solid var(--ck-stroke-strong); }
 .ck-table td { font: 400 13px/18px var(--ck-font); color: var(--ck-ink); }
 .ck-table tbody tr + tr td { border-top: 1px solid var(--ck-stroke); }
 .ck-table td:first-child { font-weight: 500; }
-.ck-table code { white-space: nowrap; }
+.ck-table code { overflow-wrap: anywhere; }
 .ck-result { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; }
 .ck-copy { position: absolute; top: 6px; right: 6px; height: 24px; padding: 0 10px; background: var(--ck-glass-strong); opacity: 0; transition: opacity var(--ck-quick); }
 .ck-root .ck-copy { background: var(--ck-glass-strong); }
@@ -332,9 +334,9 @@
 /* Two or more images in a row in a reply (Carousel): cards in a strip that scrolls and snaps sideways, a peek of the
    next one saying there's more, ‹ › a card at a time. The picked card is outlined and checked, its foot the selected navy. */
 .ck-carousel { position: relative; margin: 2px 0; }
-.ck-carousel__strip { position: relative; display: flex; gap: 8px; padding: 2px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding-inline: 2px; scrollbar-width: none; }
-.ck-carousel__strip::-webkit-scrollbar { display: none; }
-.ck-card { position: relative; flex: 0 0 var(--ck-card-w, 172px); margin: 0; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; scroll-snap-align: start; background: var(--ck-surface-2); box-shadow: inset 0 0 0 1px var(--ck-stroke-strong); }
+/* Cards wrap to the chat's width in as many columns as fit (never a sideways scroll). */
+.ck-carousel__strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--ck-card-w, 172px), 100%), 1fr)); gap: 8px; padding: 2px; }
+.ck-card { position: relative; flex: 0 0 var(--ck-card-w, 172px); margin: 0; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--ck-surface-2); box-shadow: inset 0 0 0 1px var(--ck-stroke-strong); }
 .ck-card__open { display: block; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; background: var(--ck-surface-3); }
 .ck-root .ck-card__open { cursor: zoom-in; }
 .ck-root .ck-card__open:focus-visible { outline-offset: -2px; }
@@ -357,12 +359,6 @@
 .ck-card.is-picked { outline: 2px solid var(--ck-picked); outline-offset: -2px; }
 .ck-card.is-picked .ck-card__foot { background: var(--ck-selected); }
 .ck-card__check { position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--ck-picked); color: var(--ck-picked-ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); pointer-events: none; }
-.ck-carousel__nav { position: absolute; top: calc(2px + var(--ck-card-w, 172px) * 0.375); translate: 0 -50%; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--ck-glass-strong); backdrop-filter: blur(12px); color: var(--ck-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 0 0 1px var(--ck-stroke-strong); transition: opacity var(--ck-quick), visibility var(--ck-quick); }
-.ck-root .ck-carousel__nav { background: var(--ck-glass-strong); }
-.ck-root .ck-carousel__nav:hover { color: var(--ck-accent); }
-.ck-carousel__nav.is-prev { left: 6px; }
-.ck-carousel__nav.is-next { right: 6px; }
-.ck-carousel__nav.is-off { opacity: 0; visibility: hidden; }
 /* A block's carousel (several to pick, or groups): a picked card's Pick stays a button, to take it back. */
 .ck-root button.ck-card__pick.is-on { display: inline-flex; align-items: center; gap: 4px; background: var(--ck-selected); border-color: var(--ck-selected-border); color: var(--ck-ink); }
 .ck-card__pick.is-on svg { color: var(--ck-picked); }
