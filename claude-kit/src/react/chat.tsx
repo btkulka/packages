@@ -761,6 +761,7 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
           </div>
         )}
         {slashOpen && <SlashMenu list={matches} at={slashAt} loading={loadingCommands} onPick={pickCommand} onAt={setSlashAt} />}
+        <div className={`ck-inputbox${text || pics.length || files.length ? " has-draft" : ""}`}>
         <textarea
           ref={input}
           className="ck-input"
@@ -819,6 +820,26 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
             }
           }}
         />
+        {(text || pics.length > 0 || files.length > 0) && (
+          // The message being written, gone: its words and what's attached. Pressed without taking the focus, so a phone's keyboard stays up.
+          <button
+            type="button"
+            className="ck-iconbtn ck-inputclear"
+            aria-label="Clear the message"
+            title="Clear the message"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setText("");
+              setPics([]);
+              setFiles([]);
+              setSlashOff(false);
+              input.current?.focus();
+            }}
+          >
+            <XIcon size={12} />
+          </button>
+        )}
+        </div>
         <div className="ck-row ck-send">
           {/* Five words across leave no room for Send on a phone: there the mode is one chip, and its menu the choice. */}
           {ui.phone ? (

@@ -303,6 +303,11 @@
 .ck-pastopen { margin-top: 6px; }
 
 .ck-foot { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; box-shadow: 0 -1px 0 var(--ck-stroke); }
+/* The box and its ×, which clears the message being written (its words and attachments) once there is one. */
+.ck-inputbox { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.ck-inputbox.has-draft .ck-input { padding-right: 38px; }
+.ck-root .ck-inputclear { position: absolute; top: 7px; right: 7px; width: 28px; height: 28px; border-radius: 50%; color: var(--ck-ink-3); }
+.ck-root .ck-inputclear:hover { color: var(--ck-ink); }
 .ck-input { resize: none; width: 100%; min-height: 42px; max-height: 168px; padding: 10px 14px; border-radius: 16px; background: var(--ck-field); border: 1px solid var(--ck-field-border); color: var(--ck-ink); font: 400 14px/20px var(--ck-font); outline: none; }
 .ck-input:focus-visible { outline: 2px solid var(--ck-focus); outline-offset: 2px; }
 .ck-input::placeholder { color: var(--ck-ink-3); }
