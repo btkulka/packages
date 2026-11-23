@@ -1,0 +1,114 @@
+{
+  "name": "@btkulka/twilio-client",
+  "version": "0.1.0",
+  "description": "Twilio's REST API for Ben's apps: an Account SID with its Auth Token (or an API key and secret) in, then texts (send, list one page or several, the texts that came in to a number since an instant, every text to and from one number), calls (list), the account (get), and Twilio's webhook signature (make and check). Built on http-kit (timeouts, Retry-After on 429, backoff on 5xx and network errors; a send retries only a 429), with a typed TwilioError carrying Twilio's status and error code. Browser-safe: no node:* imports, no Buffer.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btkulka/packages.git",
+    "directory": "twilio-client"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "benhaus": {
+    "credential": {
+      "label": "Twilio",
+      "docs": "https://console.twilio.com/",
+      "fields": [
+        {
+          "name": "accountSid",
+          "label": "Account SID",
+          "secret": false,
+          "env": "TWILIO_ACCOUNT_SID",
+          "placeholder": "AC..."
+        },
+        {
+          "name": "authToken",
+          "label": "Auth Token",
+          "secret": true,
+          "env": "TWILIO_AUTH_TOKEN"
+        },
+        {
+          "name": "apiKey",
+          "label": "API key SID (optional, signs in instead of the Auth Token)",
+          "secret": false,
+          "env": "TWILIO_API_KEY",
+          "placeholder": "SK..."
+        },
+        {
+          "name": "apiSecret",
+          "label": "API key secret (optional)",
+          "secret": true,
+          "env": "TWILIO_API_SECRET"
+        },
+        {
+          "name": "from",
+          "label": "Number texts go out from",
+          "secret": false,
+          "env": "TWILIO_FROM",
+          "placeholder": "+1..."
+        },
+        {
+          "name": "messagingServiceSid",
+          "label": "Messaging Service SID (optional, sends through the service instead of the number)",
+          "secret": false,
+          "env": "TWILIO_MESSAGING_SERVICE_SID",
+          "placeholder": "MG..."
+        }
+      ],
+      "test": {
+        "method": "GET",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{accountSid}.json",
+        "basicAuth": [
+          "accountSid",
+          "authToken"
+        ],
+        "expect": [
+          200
+        ],
+        "hints": [
+          {
+            "status": 401,
+            "message": "Twilio didn't accept the Account SID and Auth Token: copy both again from the Twilio Console's home page. The test signs in with the Auth Token, never the API key."
+          },
+          {
+            "status": 404,
+            "message": "Twilio has no account with that SID: it starts with AC, and a subaccount's SID differs from its parent's."
+          }
+        ]
+      }
+    }
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.test.*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@btkulka/http-kit": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}
