@@ -92,3 +92,13 @@ test("the hand-off prompt says where, what, and what to build on", () => {
   assert.match(text, /tool "set-list"/);
   assert.equal((text.match(/npm install/g) ?? []).length, 1);
 });
+
+test("an app on ui-kit is told to make its design system; one without it isn't", () => {
+  const withKit = renderProject(plan({ packages: ["ui-kit"] }), { dir: "D:/source/set-list", packagesHome: "D:/source/packages", catalogue: [...catalogue, { name: "@btkulka/ui-kit", dir: "ui-kit", description: "controls" }] });
+  const brief = withKit.find((f) => f.path === "CLAUDE.md")!.contents;
+  assert.match(brief, /## Design system/);
+  assert.match(brief, /Design System artifact for Set List/);
+  assert.match(brief, /data-ui-theme/);
+  const without = renderProject(plan({ packages: [] }), { dir: "D:/source/set-list", packagesHome: "D:/source/packages", catalogue });
+  assert.doesNotMatch(without.find((f) => f.path === "CLAUDE.md")!.contents, /## Design system/);
+});

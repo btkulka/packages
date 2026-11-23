@@ -99,6 +99,7 @@ function brief(plan: AppPlan, ctx: RenderContext): string {
     `- Packages load from their \`dist/\`: run \`npm run build\` in \`${fwd(ctx.packagesHome)}\` after changing one.`,
     plan.newPackage ? `- The plan calls for a new package: **${plan.newPackage.name}** — ${plan.newPackage.why} Create it first, then build on it here.` : "",
     ``,
+    plan.packages.some((n) => findPackage(n, ctx.catalogue)?.dir === "ui-kit" || n === "ui-kit") ? designSystemSection(plan) : "",
     `## Icon`,
     ``,
     isPackage
@@ -113,6 +114,20 @@ function brief(plan: AppPlan, ctx: RenderContext): string {
     .filter((l) => l !== "")
     .join("\n")
     .replace(/\n{3,}/g, "\n\n");
+}
+
+/** An app on ui-kit gets a design system of its own before its first screen (ui-kit README, "Adding it to an app"). */
+function designSystemSection(plan: AppPlan): string {
+  return [
+    `## Design system`,
+    ``,
+    `This app builds on \`@btkulka/ui-kit\`, which looks like Benhäus (its \`midnight\` theme) until the app has a design system of its own. Make one first, without waiting to be asked:`,
+    ``,
+    `1. On Claude Design, a Design System artifact for ${plan.name}, starting from the Benhäus design system: its tokens, type, the controls as cards.`,
+    `2. Bring it into the app: pick the kit's nearest stock theme (\`midnight\`, \`daylight\`, \`graphite\`, \`ember\`) with \`data-ui-theme\` on \`<html>\`, and customize it in the app's own stylesheet after \`@btkulka/ui-kit/styles.css\` by setting the \`--ui-*\` tokens that differ (ui-kit README, "Customizing a theme for an app").`,
+    `3. The design system's link and the base theme in this CLAUDE.md, with the rule that a token or control changed in one is changed in the other.`,
+    ``,
+  ].join("\n");
 }
 
 function claudeMd(plan: AppPlan, ctx: RenderContext): string {
