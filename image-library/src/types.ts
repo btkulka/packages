@@ -183,14 +183,21 @@ export interface SearchQuery {
   includeSub?: boolean;
   /** Only pictures, only 3D models, or only videos. */
   kind?: ItemKind;
+  /** Any of these kinds (the Gallery page's Type filter); empty is every kind. */
+  kinds?: ItemKind[];
   /** Only images in no collection at all. */
   unfiled?: boolean;
   /** Must have every one of these tags. */
   tags?: string[];
+  /** Must have at least one of these (empty is no condition). */
+  anyTags?: string[];
   /** Must have none of these. */
   notTags?: string[];
   untagged?: boolean;
+  /** Part of the model's name. */
   model?: string;
+  /** Made by any of these models, by their exact names (the Gallery page's Model filter). */
+  models?: string[];
   /** Inclusive ISO dates (YYYY-MM-DD or full) on `created`. */
   from?: string;
   to?: string;
@@ -206,6 +213,8 @@ export interface SearchQuery {
   /** With collapse: these stacks show every matching member, side by side in stack order. */
   openStacks?: number[];
   sort?: SortKey;
+  /** The sort the other way round: oldest first for newest, Z to A for name, the fewest views first for views. */
+  reverse?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -221,6 +230,21 @@ export interface TagInfo {
   id: number;
   name: string;
   count: number;
+}
+
+/**
+ * How many of a search's matches each filter's options would give (Library.facets): each counted
+ * with every other filter on but its own off, so the counts say what picking one more would show.
+ * A closed stack counts once, as its tile does.
+ */
+export interface SearchFacets {
+  kinds: Record<ItemKind, number>;
+  /** Every tag with a match, the most used first. */
+  tags: { name: string; count: number }[];
+  /** Every model with a match, the most used first; items no model made aren't counted. */
+  models: { name: string; count: number }[];
+  /** How many of the matches are starred, and how many there are with Starred off. */
+  starred: { on: number; all: number };
 }
 
 export interface WatchInfo {
@@ -278,9 +302,30 @@ export interface ViewRequest {
   collectionId?: number | null;
   /** A search, as typed in the search field. */
   text?: string;
+  /** The page's filters and sort; any left out go back to their defaults (no filter, newest first). */
+  filters?: ViewFilters;
   /** Open this image in the viewer. */
   imageId?: number;
   /** Open these side by side (2–4). */
   compare?: number[];
   at: number;
+}
+
+/** When something was made, as the Gallery page's Made filter offers it: since the start of today, or the last 7 days, month or year. */
+export type MadeBand = "today" | "week" | "month" | "year";
+/** The Gallery page's Size filter: under 1 MB, 1–10 MB, 10–100 MB, 100 MB–1 GB, over 1 GB. */
+export type SizeBand = "tiny" | "small" | "medium" | "large" | "huge";
+
+/** The Gallery page's filters and sort, as open_gallery sets them. */
+export interface ViewFilters {
+  kinds?: ItemKind[];
+  starred?: boolean;
+  tags?: string[];
+  /** all (default): every one of the tags; any: at least one. */
+  tagMatch?: "all" | "any";
+  models?: string[];
+  made?: MadeBand;
+  size?: SizeBand;
+  sort?: SortKey;
+  reverse?: boolean;
 }

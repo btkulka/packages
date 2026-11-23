@@ -15,6 +15,7 @@ import type {
   LibraryInfo,
   MoveResult,
   ScanResult,
+  SearchFacets,
   SearchQuery,
   ViewRequest,
   SearchResult,
@@ -43,6 +44,7 @@ import { videoInfo } from "./video.js";
 export const STARRED = "starred";
 export const PICKED = STARRED;
 const OLD_STAR = "picked";
+const isStarTag = (t: string) => [STARRED, OLD_STAR].includes(t.toLowerCase());
 
 const NOW = "(strftime('%Y-%m-%dT%H:%M:%fZ','now'))";
 
@@ -460,7 +462,8 @@ export class Library {
   private static COLS = `i.id, i.kind, i.path, i.name, i.folder, i.ext, i.bytes, i.width, i.height, i.mtime, i.created, i.added_at, i.missing, i.prompt, i.model, i.usd, i.tris, i.mesh, i.video, i.views, i.viewed_at, i.stack_id,
     (SELECT group_concat(t.name, char(31)) FROM image_tags it JOIN tags t ON t.id = it.tag_id WHERE it.image_id = i.id) tags`;
 
-  search(q: SearchQuery = {}): SearchResult {
+  /** The WHERE clause a search's filters make, and its arguments. */
+  private whereOf(q: SearchQuery): { w: string; args: unknown[] } {
     const where: string[] = [];
     const args: unknown[] = [];
     let missing = q.missing ?? "hide";
@@ -519,13 +522,25 @@ export class Library {
       where.push("i.kind = ?");
       args.push(q.kind);
     }
+    if (q.kinds?.length) {
+      where.push(`i.kind IN (${placeholders(q.kinds)})`);
+      args.push(...q.kinds);
+    }
     if (q.unfiled) where.push("NOT EXISTS (SELECT 1 FROM collection_images ci WHERE ci.image_id = i.id)");
     for (const t of q.tags ?? []) hasTag(false, t);
     for (const t of q.notTags ?? []) hasTag(true, t);
+    if (q.anyTags?.length) {
+      where.push(`EXISTS (SELECT 1 FROM image_tags it JOIN tags t ON t.id = it.tag_id WHERE it.image_id = i.id AND t.name COLLATE NOCASE IN (${placeholders(q.anyTags)}))`);
+      args.push(...q.anyTags);
+    }
     if (q.untagged) where.push("NOT EXISTS (SELECT 1 FROM image_tags it WHERE it.image_id = i.id)");
     if (q.model) {
       where.push("ifnull(i.model, '') LIKE ? ESCAPE '\\'");
       args.push(`%${likeEscape(q.model)}%`);
+    }
+    if (q.models?.length) {
+      where.push(`i.model IN (${placeholders(q.models)})`);
+      args.push(...q.models);
     }
     if (q.from) {
       where.push("i.created >= ?");
@@ -547,8 +562,22 @@ export class Library {
       where.push(`i.id IN (${placeholders(q.ids)})`);
       args.push(...q.ids);
     }
-    const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const order = {
+    return { w: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
+  }
+
+  /** FROM a search's matches, a closed stack as one row (its first member that matches), and the arguments that go with it. */
+  private matchesOf(q: SearchQuery): { from: string; fargs: SQLInputValue[]; w: string; args: unknown[] } {
+    const { w, args } = this.whereOf(q);
+    // A collapsed stack is its first member that matches: the front, unless the search leaves it out.
+    const open = [...new Set(q.openStacks ?? [])];
+    const collapse = q.stacks !== "expand" && !q.ids;
+    const key = `CASE WHEN i.stack_id IS NULL${open.length ? ` OR i.stack_id IN (${placeholders(open)})` : ""} THEN -i.id ELSE i.stack_id END`;
+    const from = collapse ? `FROM images i JOIN (SELECT i.id, row_number() OVER (PARTITION BY ${key} ORDER BY i.stack_pos, i.id) rn FROM images i ${w}) hit ON hit.id = i.id AND hit.rn = 1` : `FROM images i ${w}`;
+    return { from, fargs: (collapse ? [...open, ...args] : args).map(p), w, args };
+  }
+
+  search(q: SearchQuery = {}): SearchResult {
+    const base = {
       newest: "i.created DESC, i.id DESC",
       oldest: "i.created ASC, i.id ASC",
       added: "i.added_at DESC, i.id DESC",
@@ -558,20 +587,40 @@ export class Library {
       cost: "i.usd DESC NULLS LAST, i.created DESC",
       views: "i.views DESC, i.viewed_at DESC NULLS LAST, i.created DESC, i.id DESC",
     }[q.sort ?? "newest"];
+    // The other way round flips every direction; what has no value (no cost, never viewed) stays last.
+    const order = q.reverse ? base.replace(/\b(ASC|DESC)\b/g, (d) => (d === "ASC" ? "DESC" : "ASC")) : base;
     const limit = Math.max(0, Math.min(q.limit ?? 200, 100_000));
     const offset = Math.max(0, q.offset ?? 0);
-    // A collapsed stack is its first member that matches: the front, unless the search leaves it out.
     const open = [...new Set(q.openStacks ?? [])];
-    const collapse = q.stacks !== "expand" && !q.ids;
-    const key = `CASE WHEN i.stack_id IS NULL${open.length ? ` OR i.stack_id IN (${placeholders(open)})` : ""} THEN -i.id ELSE i.stack_id END`;
-    const from = collapse ? `FROM images i JOIN (SELECT i.id, row_number() OVER (PARTITION BY ${key} ORDER BY i.stack_pos, i.id) rn FROM images i ${w}) hit ON hit.id = i.id AND hit.rn = 1` : `FROM images i ${w}`;
-    const fargs = (collapse ? [...open, ...args] : args).map(p);
+    const { from, fargs, w, args } = this.matchesOf(q);
     const total = Number((this.db.prepare(`SELECT count(*) n ${from}`).get(...fargs) as Row).n);
     // The size on disk counts a closed stack's other members too: they're there, under the front's tile.
     const bytes = Number((this.db.prepare(`SELECT ifnull(sum(i.bytes), 0) b FROM images i ${w}`).get(...args.map(p)) as Row).b);
     const rows = this.db.prepare(`SELECT ${Library.COLS} ${from} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...fargs, limit, offset) as Row[];
     const items = rows.map((r) => this.rowOf(r));
     return { total, bytes, items: open.length ? keepTogether(items, new Set(open)) : items };
+  }
+
+  /**
+   * What each of the page's filters would give on top of the rest (SearchFacets): its kinds, tags,
+   * models and stars, each counted with every other filter in `q` on and its own off.
+   */
+  facets(q: SearchQuery = {}): SearchFacets {
+    const base: SearchQuery = { ...q, limit: undefined, offset: undefined, sort: undefined };
+    const count = (sub: SearchQuery, select: string, join = "") => {
+      const { from, fargs } = this.matchesOf(sub);
+      // The matches as a table of their own, so a join or a GROUP BY goes after them whatever their FROM says.
+      return this.all(`SELECT ${select} FROM (SELECT i.id, i.kind, i.model ${from}) i ${join}`, ...fargs);
+    };
+    const kinds: Record<ItemKind, number> = { image: 0, model: 0, video: 0 };
+    for (const r of count({ ...base, kind: undefined, kinds: undefined }, "i.kind k, count(*) n", "GROUP BY i.kind")) kinds[String(r.k) as ItemKind] = Number(r.n);
+    const tags = count({ ...base, anyTags: undefined }, "t.name name, count(*) n", "JOIN image_tags it ON it.image_id = i.id JOIN tags t ON t.id = it.tag_id GROUP BY t.id ORDER BY n DESC, t.name COLLATE NOCASE").map((r) => ({ name: String(r.name), count: Number(r.n) }));
+    const models = count({ ...base, models: undefined }, "i.model name, count(*) n", "GROUP BY i.model HAVING i.model IS NOT NULL ORDER BY n DESC, i.model").map((r) => ({ name: String(r.name), count: Number(r.n) }));
+    // Starred is a tag among the rest of q.tags: off, it's the same search without it.
+    const offStar = { ...base, tags: (q.tags ?? []).filter((t) => !isStarTag(t)) };
+    const all = Number(count(offStar, "count(*) n")[0]?.n ?? 0);
+    const on = Number(count({ ...offStar, tags: [...(offStar.tags ?? []), STARRED] }, "count(*) n")[0]?.n ?? 0);
+    return { kinds, tags, models, starred: { on, all } };
   }
 
   /** An image by id, by path, or by a file: address. */

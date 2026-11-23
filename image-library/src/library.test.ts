@@ -111,6 +111,37 @@ test("search: words, fields, negation, collections, dates", () => {
   ]);
 });
 
+test("the page's filters: kinds, any of some tags, models, the sort reversed, and facets", () => {
+  const [bundle, sheet] = ["bundle.png", "sheet.png"].map((n) => lib.search({ text: n }).items[0].id);
+  lib.tagImages([bundle], ["hero", "starred"]);
+  lib.tagImages([sheet], ["draft"]);
+  assert.equal(lib.search({ kinds: ["image", "video"] }).total, 2);
+  assert.equal(lib.search({ kinds: ["model"] }).total, 0);
+  assert.equal(lib.search({ kinds: [] }).total, 2, "no kinds is every kind");
+  assert.equal(lib.search({ anyTags: ["hero", "draft"] }).total, 2);
+  assert.equal(lib.search({ anyTags: ["HERO"] }).total, 1, "tags match whatever their case");
+  assert.equal(lib.search({ tags: ["hero", "draft"] }).total, 0, "tags needs every one");
+  assert.equal(lib.search({ models: ["gemini-3-pro-image-preview"] }).total, 1);
+  assert.equal(lib.search({ models: ["gemini"] }).total, 0, "models are whole names");
+  assert.deepEqual(lib.search({ sort: "size", reverse: true }).items.map((r) => r.name), ["bundle.png", "sheet.png"]);
+  assert.deepEqual(lib.search({ sort: "name", reverse: true }).items.map((r) => r.name), ["sheet.png", "bundle.png"]);
+
+  const f = lib.facets({ kinds: ["video"], tags: ["starred"], anyTags: ["draft"] });
+  assert.deepEqual(f.kinds, { image: 0, model: 0, video: 0 }, "kinds counted without the kinds filter, the rest on: nothing starred and tagged draft");
+  assert.deepEqual(lib.facets({ tags: ["starred"] }).kinds, { image: 1, model: 0, video: 0 });
+  assert.deepEqual(
+    lib.facets({}).tags.map((t) => [t.name, t.count]),
+    [["draft", 1], ["hero", 1], ["starred", 1]],
+  );
+  assert.deepEqual(lib.facets({ anyTags: ["draft"] }).tags.length, 3, "the tag counts leave the tag filter off");
+  assert.deepEqual(lib.facets({}).models, [{ name: "gemini-3-pro-image-preview", count: 1 }]);
+  assert.deepEqual(lib.facets({ anyTags: ["draft"] }).starred, { on: 0, all: 1 });
+  assert.deepEqual(lib.facets({ tags: ["starred"] }).starred, { on: 1, all: 2 }, "Starred's own count leaves it off");
+  assert.deepEqual(lib.facets({ stacks: "expand", ids: [bundle, sheet] }).models.length, 1, "a search that isn't collapsed counts too");
+  lib.tagImages([bundle], [], ["hero", "starred"]);
+  lib.tagImages([sheet], [], ["draft"]);
+});
+
 test("carousel lines and picks round-trip, odd paths included", async () => {
   const add = await lib.addPaths([join(dir, "odd dir (v2)")], { tags: ["ufo"] });
   assert.equal(add.added.length, 1);
