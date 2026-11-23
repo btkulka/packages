@@ -28,7 +28,9 @@ export interface TabBarProps<T extends string> {
 /**
  * The app's sections: a floating bar at the bottom of a phone, a rail down the side of a wide
  * screen (900px and up), with a lit pill that glides to the section you're in. Tapping the
- * section you're already in asks it to go back to its top (`onChange` fires again).
+ * section you're already in asks it to go back to its top (`onChange` fires again). Seven sections
+ * or more don't fit their labels across a phone: the bar shows their icons, with the label only on
+ * the section you're in (every label stays for screen readers).
  */
 export function TabBar<T extends string>({ items, value, onChange, label, brand, footer, className }: TabBarProps<T>) {
   const nav = useRef<HTMLElement>(null);
@@ -46,7 +48,7 @@ export function TabBar<T extends string>({ items, value, onChange, label, brand,
     return () => cancelAnimationFrame(id);
   }, []);
   return (
-    <nav ref={nav} className={cx("ui-tabbar", ready && "is-ready", className)} aria-label={label}>
+    <nav ref={nav} className={cx("ui-tabbar", ready && "is-ready", items.length > 6 && "is-crowded", className)} aria-label={label}>
       {brand && <span className="ui-tabbar__brand">{brand}</span>}
       {pill && <span className="ui-tabbar__pill" aria-hidden="true" style={{ transform: `translate(${pill.x}px, ${pill.y}px)`, width: pill.w, height: pill.h }} />}
       {items.map((t) => {

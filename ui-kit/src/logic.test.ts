@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addDaysIso, addTags, daysBetweenIso, formatAmount, hueFor, initials, isIso, mergePresence, parseAmount, reordered, splitTags, stepValue, swipeOutcome } from "./logic.js";
+import { addDaysIso, addTags, daysBetweenIso, formatAmount, hueFor, initials, isIso, mergePresence, parseAmount, reordered, sortRows, splitTags, stepValue, swipeOutcome } from "./logic.js";
 
 test("parseAmount reads what people type", () => {
   assert.equal(parseAmount("2"), 2);
@@ -102,4 +102,19 @@ test("token completion", async () => {
   assert.deepEqual(rankSuggestions("pep", ["red peppers", "pepperoni", "jalapeño"]), ["pepperoni", "red peppers"]);
   assert.deepEqual(rankSuggestions("par", ["asparagus"]), ["asparagus"]);
   assert.deepEqual(rankSuggestions("", ["a"]), []);
+});
+
+test("sortRows: numbers by size, text as read, blanks last either way, ties stay put", () => {
+  const rows = [
+    { n: "item 10", v: 3 },
+    { n: "Item 2", v: null },
+    { n: "apple", v: 3 },
+    { n: "", v: 1 },
+    { n: "Éclair", v: Number.NaN },
+  ];
+  assert.deepEqual(sortRows(rows, (r) => r.n).map((r) => r.n), ["apple", "Éclair", "Item 2", "item 10", ""]);
+  assert.deepEqual(sortRows(rows, (r) => r.n, "desc").map((r) => r.n), ["item 10", "Item 2", "Éclair", "apple", ""]);
+  assert.deepEqual(sortRows(rows, (r) => r.v).map((r) => r.n), ["", "item 10", "apple", "Item 2", "Éclair"]);
+  assert.deepEqual(sortRows(rows, (r) => r.v, "desc").map((r) => r.n), ["item 10", "apple", "", "Item 2", "Éclair"]);
+  assert.deepEqual(sortRows([{ b: true }, { b: false }], (r) => r.b).map((r) => r.b), [false, true]);
 });

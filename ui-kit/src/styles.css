@@ -1,9 +1,152 @@
-/* @btkulka/ui-kit — the controls' look, themed by --ui-* variables. The defaults are a quiet
-   dark theme; an app sets its own (Gourmet Guru maps its Hearth tokens onto these). Motion:
-   things settle over 160–280ms on one easing and never overshoot; reduced motion keeps only
-   fades. Everything tappable is 44px or more. */
+/* @btkulka/ui-kit — the controls' look, themed by --ui-* variables. Motion: things settle over
+   160–280ms on one easing and never overshoot; reduced motion keeps only fades. Everything tappable
+   is 44px or more.
 
-:root {
+   Themes (every one sets every token, so it works on the page or on any part of it):
+   - midnight: Benhäus's night look and the default: black ground, quiet surfaces, gold for the primary action and focus, navy for what's selected (the tab bar's pill), Inter and Inter Tight.
+   - daylight: Benhäus's day look: the same gold and navy on light grey and white.
+   - graphite: Graphite with a blue accent: the kit's first look.
+   - ember: A warm room after dark (Gourmet Guru's Hearth): walnut, terracotta for what you tap, candle amber, sage, berry; Figtree and Newsreader when the app loads them.
+   Pick one with data-ui-theme on <html> (setUiTheme); plain :root gets midnight. Customize per app in the
+   app's own stylesheet, after this one: set any token on :root (or on [data-ui-theme="<base>"] to change
+   only that theme). The -soft and -line tints follow their base colour, so --ui-accent alone re-tints
+   the accent; set -hi, -ink and -text too when the new colour needs them. customizeUiTheme() does the
+   same at run time. */
+
+@font-face {
+  font-family: "Inter";
+  src: url("./fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter Tight";
+  src: url("./fonts/InterTight-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root,
+[data-ui-theme="midnight"] {
+  color-scheme: dark;
+  --ui-bg: #000000;
+  --ui-surface: #0c0c0e;
+  --ui-surface-2: #161618;
+  --ui-surface-3: #212124;
+  --ui-field: #1c1c1f;
+  --ui-line: rgba(255, 255, 255, 0.08);
+  --ui-line-2: rgba(255, 255, 255, 0.16);
+  --ui-ink: #f5f5f7;
+  --ui-ink-2: #a8a8ad;
+  --ui-ink-3: #8b8b91;
+  --ui-label: #a8a8ad;
+  --ui-placeholder: #6e6e74;
+
+  --ui-accent: #e2bd68;
+  --ui-accent-hi: #f6e3ae;
+  --ui-accent-ink: #1a1405;
+  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 14%, transparent);
+  --ui-accent-line: color-mix(in srgb, var(--ui-accent) 50%, transparent);
+  --ui-accent-text: #f6e3ae;
+  --ui-good: #62d9a0;
+  --ui-good-ink: #06231a;
+  --ui-good-soft: color-mix(in srgb, var(--ui-good) 13%, transparent);
+  --ui-good-line: color-mix(in srgb, var(--ui-good) 28%, transparent);
+  --ui-good-text: #a6ecc9;
+  --ui-warn: #ff8a5c;
+  --ui-warn-ink: #2e1206;
+  --ui-warn-soft: color-mix(in srgb, var(--ui-warn) 14%, transparent);
+  --ui-warn-line: color-mix(in srgb, var(--ui-warn) 30%, transparent);
+  --ui-warn-text: #ffbea3;
+  --ui-danger: #ff7d96;
+  --ui-danger-ink: #2b0a12;
+  --ui-danger-soft: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+  --ui-danger-line: color-mix(in srgb, var(--ui-danger) 32%, transparent);
+  --ui-danger-text: #ffb8c6;
+
+  --ui-font: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --ui-display: "Inter Tight", "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --ui-display-weight: 650;
+  --ui-display-tracking: -0.02em;
+  --ui-r-sheet: 30px;
+  --ui-r-card: 22px;
+  --ui-r-field: 12px;
+  --ui-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --ui-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --ui-shadow-lift: 0 28px 56px -16px rgba(0, 0, 0, 0.85);
+  --ui-focus: var(--ui-accent);
+  --ui-backdrop: rgba(0, 0, 0, 0.55);
+  --ui-sheet-bg: var(--ui-surface-2);
+  --ui-toast-bg: var(--ui-surface-3);
+  --ui-toast-error: #3a1220;
+  --ui-tabbar-bg: rgba(22, 22, 24, 0.92);
+  --ui-tabbar-pill: #1f3270;
+  --ui-tabbar-ink: var(--ui-ink-2);
+  --ui-compact-bg: rgba(0, 0, 0, 0.8);
+}
+
+[data-ui-theme="daylight"] {
+  color-scheme: light;
+  --ui-bg: #f5f5f7;
+  --ui-surface: #fbfbfd;
+  --ui-surface-2: #ffffff;
+  --ui-surface-3: #ebebef;
+  --ui-field: #ffffff;
+  --ui-line: rgba(0, 0, 0, 0.07);
+  --ui-line-2: rgba(0, 0, 0, 0.14);
+  --ui-ink: #1d1d1f;
+  --ui-ink-2: #4b4b50;
+  --ui-ink-3: #626267;
+  --ui-label: #4b4b50;
+  --ui-placeholder: #8a8a91;
+
+  --ui-accent: #d2ab4c;
+  --ui-accent-hi: #c49a3a;
+  --ui-accent-ink: #1a1405;
+  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 30%, #ffffff);
+  --ui-accent-line: color-mix(in srgb, var(--ui-accent) 55%, transparent);
+  --ui-accent-text: #765410;
+  --ui-good: #13704b;
+  --ui-good-ink: #ffffff;
+  --ui-good-soft: color-mix(in srgb, var(--ui-good) 14%, #ffffff);
+  --ui-good-line: color-mix(in srgb, var(--ui-good) 30%, transparent);
+  --ui-good-text: #13704b;
+  --ui-warn: #a6380f;
+  --ui-warn-ink: #ffffff;
+  --ui-warn-soft: color-mix(in srgb, var(--ui-warn) 14%, #ffffff);
+  --ui-warn-line: color-mix(in srgb, var(--ui-warn) 30%, transparent);
+  --ui-warn-text: #a6380f;
+  --ui-danger: #b31f4a;
+  --ui-danger-ink: #ffffff;
+  --ui-danger-soft: color-mix(in srgb, var(--ui-danger) 13%, #ffffff);
+  --ui-danger-line: color-mix(in srgb, var(--ui-danger) 30%, transparent);
+  --ui-danger-text: #b31f4a;
+
+  --ui-font: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --ui-display: "Inter Tight", "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --ui-display-weight: 650;
+  --ui-display-tracking: -0.02em;
+  --ui-r-sheet: 30px;
+  --ui-r-card: 22px;
+  --ui-r-field: 12px;
+  --ui-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --ui-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.14);
+  --ui-shadow-lift: 0 20px 40px -16px rgba(0, 0, 0, 0.2);
+  --ui-focus: #765410;
+  --ui-backdrop: rgba(29, 29, 31, 0.32);
+  --ui-sheet-bg: var(--ui-surface-2);
+  --ui-toast-bg: var(--ui-surface-2);
+  --ui-toast-error: #fbe3ea;
+  --ui-tabbar-bg: rgba(255, 255, 255, 0.92);
+  --ui-tabbar-pill: #e2e7f4;
+  --ui-tabbar-ink: var(--ui-ink-2);
+  --ui-compact-bg: rgba(245, 245, 247, 0.86);
+}
+
+[data-ui-theme="graphite"] {
+  color-scheme: dark;
   --ui-bg: #121214;
   --ui-surface: #1b1b1f;
   --ui-surface-2: #24242a;
@@ -20,27 +163,27 @@
   --ui-accent: #6c9cff;
   --ui-accent-hi: #8fb3ff;
   --ui-accent-ink: #0b1630;
-  --ui-accent-soft: rgba(108, 156, 255, 0.16);
-  --ui-accent-line: rgba(108, 156, 255, 0.55);
+  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 16%, transparent);
+  --ui-accent-line: color-mix(in srgb, var(--ui-accent) 55%, transparent);
   --ui-accent-text: #cfdcff;
   --ui-good: #7cc29a;
   --ui-good-ink: #0d2116;
-  --ui-good-soft: rgba(124, 194, 154, 0.14);
-  --ui-good-line: rgba(124, 194, 154, 0.26);
+  --ui-good-soft: color-mix(in srgb, var(--ui-good) 14%, transparent);
+  --ui-good-line: color-mix(in srgb, var(--ui-good) 26%, transparent);
   --ui-good-text: #bfe5cf;
   --ui-warn: #f0b25a;
   --ui-warn-ink: #2d1a03;
-  --ui-warn-soft: rgba(240, 178, 90, 0.14);
-  --ui-warn-line: rgba(240, 178, 90, 0.28);
+  --ui-warn-soft: color-mix(in srgb, var(--ui-warn) 14%, transparent);
+  --ui-warn-line: color-mix(in srgb, var(--ui-warn) 28%, transparent);
   --ui-warn-text: #f6c886;
   --ui-danger: #ef7d92;
   --ui-danger-ink: #2b0d14;
-  --ui-danger-soft: rgba(239, 125, 146, 0.14);
-  --ui-danger-line: rgba(239, 125, 146, 0.32);
+  --ui-danger-soft: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+  --ui-danger-line: color-mix(in srgb, var(--ui-danger) 32%, transparent);
   --ui-danger-text: #f6b3c0;
 
   --ui-font: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --ui-display: var(--ui-font);
+  --ui-display: system-ui, -apple-system, "Segoe UI", sans-serif;
   --ui-display-weight: 650;
   --ui-display-tracking: -0.01em;
   --ui-r-sheet: 26px;
@@ -50,9 +193,6 @@
   --ui-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
   --ui-shadow-lift: 0 16px 34px rgba(0, 0, 0, 0.55);
   --ui-focus: var(--ui-warn);
-  --ui-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ui-ease-in: cubic-bezier(0.4, 0, 1, 1);
-
   --ui-backdrop: rgba(0, 0, 0, 0.6);
   --ui-sheet-bg: var(--ui-surface-2);
   --ui-toast-bg: var(--ui-surface-3);
@@ -61,6 +201,70 @@
   --ui-tabbar-pill: rgba(0, 0, 0, 0.45);
   --ui-tabbar-ink: var(--ui-ink-2);
   --ui-compact-bg: rgba(18, 18, 20, 0.82);
+}
+
+[data-ui-theme="ember"] {
+  color-scheme: dark;
+  --ui-bg: #140f0c;
+  --ui-surface: #1f1814;
+  --ui-surface-2: #2a201a;
+  --ui-surface-3: #3a2c22;
+  --ui-field: #1d1511;
+  --ui-line: rgba(255, 214, 170, 0.09);
+  --ui-line-2: rgba(255, 214, 170, 0.16);
+  --ui-ink: #f6ebdd;
+  --ui-ink-2: #d6c3ae;
+  --ui-ink-3: #a8937e;
+  --ui-label: #c9b39c;
+  --ui-placeholder: #8f7b68;
+
+  --ui-accent: #d4704a;
+  --ui-accent-hi: #e88b63;
+  --ui-accent-ink: #2a1208;
+  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 17%, transparent);
+  --ui-accent-line: color-mix(in srgb, var(--ui-accent) 60%, transparent);
+  --ui-accent-text: #f6d2c0;
+  --ui-good: #9fbf88;
+  --ui-good-ink: #17240f;
+  --ui-good-soft: color-mix(in srgb, var(--ui-good) 13%, transparent);
+  --ui-good-line: color-mix(in srgb, var(--ui-good) 24%, transparent);
+  --ui-good-text: #c2dbae;
+  --ui-warn: #f0b25a;
+  --ui-warn-ink: #2d1a03;
+  --ui-warn-soft: color-mix(in srgb, var(--ui-warn) 15%, transparent);
+  --ui-warn-line: color-mix(in srgb, var(--ui-warn) 28%, transparent);
+  --ui-warn-text: #f6c886;
+  --ui-danger: #e8728a;
+  --ui-danger-ink: #2b0d14;
+  --ui-danger-soft: color-mix(in srgb, var(--ui-danger) 14%, transparent);
+  --ui-danger-line: color-mix(in srgb, var(--ui-danger) 32%, transparent);
+  --ui-danger-text: #f2a2b3;
+
+  --ui-font: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-display: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --ui-display-weight: 560;
+  --ui-display-tracking: -0.012em;
+  --ui-r-sheet: 28px;
+  --ui-r-card: 20px;
+  --ui-r-field: 14px;
+  --ui-highlight: inset 0 1px 0 rgba(255, 225, 190, 0.12);
+  --ui-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+  --ui-shadow-lift: 0 16px 34px rgba(0, 0, 0, 0.6);
+  --ui-focus: var(--ui-warn);
+  --ui-backdrop: rgba(8, 5, 4, 0.62);
+  --ui-sheet-bg: var(--ui-surface-2);
+  --ui-toast-bg: var(--ui-surface-3);
+  --ui-toast-error: #4a2229;
+  --ui-tabbar-bg: repeating-linear-gradient(90deg, #3b2a1f 0 26px, #412e22 26px 47px, #37271c 47px 70px, #3e2c20 70px 92px);
+  --ui-tabbar-pill: rgba(16, 11, 9, 0.62);
+  --ui-tabbar-ink: #dcc8b2;
+  --ui-compact-bg: rgba(20, 15, 12, 0.84);
+}
+
+/* The kit's mechanics, the same under every theme. */
+:root {
+  --ui-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ui-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ui-compact-top: 0px;
   --ui-toast-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   --ui-safe-b: env(safe-area-inset-bottom, 0px);
@@ -1619,6 +1823,20 @@ body.ui-keyboard-open .ui-tabbar {
   color: var(--ui-accent-hi);
   transform: translateY(-1px);
 }
+.ui-tab__label {
+  white-space: nowrap;
+}
+/* Seven sections or more on a phone: icons, and the label only on the section you're in, which widens to hold it. */
+.ui-tabbar.is-crowded .ui-tab:not(.is-on) .ui-tab__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.ui-tabbar.is-crowded .ui-tab.is-on {
+  flex-grow: 2;
+}
 .ui-tab__badge {
   position: absolute;
   top: 6px;
@@ -1686,6 +1904,17 @@ body.ui-keyboard-open .ui-tabbar {
   .ui-tab__badge {
     position: static;
     margin-left: auto;
+  }
+  /* The rail has room for every label. */
+  .ui-tabbar.is-crowded .ui-tab:not(.is-on) .ui-tab__label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+  .ui-tabbar.is-crowded .ui-tab.is-on {
+    flex-grow: 0;
   }
   .ui-tabbar__footer {
     display: block;
@@ -2272,4 +2501,166 @@ body.ui-sheet-open .ui-compact-head {
   .ui-icon-tile:hover {
     color: var(--ui-ink);
   }
+}
+
+/* ---------------------------------------------------------------- data table */
+
+/* Scrolls both ways inside itself, so the header and a sticky first column stay put. */
+.ui-table-wrap {
+  max-width: 100%;
+  min-width: 0;
+  max-height: min(72vh, 900px);
+  overflow: auto;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-card);
+  background: var(--ui-surface);
+  overscroll-behavior: contain;
+}
+.ui-table-wrap:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.ui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+  color: var(--ui-ink);
+}
+.ui-table th,
+.ui-table td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-surface);
+}
+.ui-table td.is-end,
+.ui-table th.is-end {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ui-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0;
+  background: var(--ui-surface-2);
+  color: var(--ui-label);
+  font-size: 12px;
+  font-weight: 800;
+  border-bottom-color: var(--ui-line-2);
+}
+.ui-table thead th:not(:has(button)) {
+  padding: 10px 12px;
+}
+.ui-table .is-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  box-shadow: 1px 0 0 var(--ui-line-2);
+}
+.ui-table thead th.is-sticky {
+  z-index: 3;
+}
+.ui-table tbody th {
+  font-weight: 700;
+}
+/* On a phone the sticky first column wraps rather than take the screen. */
+@media (max-width: 600px) {
+  .ui-table tbody th.is-sticky {
+    white-space: normal;
+    max-width: 10.5rem;
+  }
+}
+.ui-table__sort {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+th.is-end .ui-table__sort {
+  justify-content: flex-end;
+}
+.ui-table__arrow {
+  opacity: 0.45;
+  font-size: 11px;
+}
+th.is-sorted {
+  color: var(--ui-ink);
+}
+th.is-sorted .ui-table__arrow {
+  opacity: 1;
+  color: var(--ui-accent-hi);
+}
+.ui-table tr.is-clickable {
+  cursor: pointer;
+}
+.ui-table tr.is-clickable:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: -2px;
+}
+.ui-table tr.is-clickable:active > * {
+  background: var(--ui-surface-2);
+}
+@media (hover: hover) {
+  .ui-table tr.is-clickable:hover > * {
+    background: var(--ui-surface-2);
+  }
+  .ui-table__sort:hover {
+    color: var(--ui-ink);
+  }
+}
+.ui-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.ui-table__empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--ui-ink-3);
+}
+
+/* ------------------------------------------------------------------ drag to */
+
+/* What follows the pointer: lifted, a little off the finger so the target under it shows. */
+.ui-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  pointer-events: none;
+  margin: -22px 0 0 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--ui-surface-3);
+  color: var(--ui-ink);
+  font-weight: 800;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: var(--ui-shadow-lift);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The target under it. */
+.is-drop-over {
+  outline: 2px solid var(--ui-accent-hi);
+  outline-offset: -2px;
+  background: var(--ui-accent-soft) !important;
+  color: var(--ui-ink) !important;
+}
+[data-drag-handle] {
+  cursor: grab;
+}
+[data-drag-handle]:active {
+  cursor: grabbing;
 }

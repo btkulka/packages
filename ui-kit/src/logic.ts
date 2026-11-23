@@ -249,3 +249,29 @@ export function rankSuggestions(word: string, pool: readonly string[], limit = 6
   const byLen = (a: string, b: string) => a.length - b.length || a.localeCompare(b);
   return [...starts.sort(byLen), ...wordStarts.sort(byLen), ...has.sort(byLen)].slice(0, limit);
 }
+
+export type SortDir = "asc" | "desc";
+export type SortValue = string | number | boolean | null | undefined;
+
+/**
+ * Rows in the order a table column asks for: numbers by size, text the way people read it ("item 2"
+ * before "item 10", case and accents aside), false before true. Rows with no value (null, undefined,
+ * "", NaN) go last in either direction, and rows that tie keep the order they came in.
+ */
+export function sortRows<R>(rows: readonly R[], value: (row: R) => SortValue, dir: SortDir = "asc"): R[] {
+  const empty = (v: SortValue) => v === null || v === undefined || v === "" || (typeof v === "number" && Number.isNaN(v));
+  const sign = dir === "asc" ? 1 : -1;
+  return rows
+    .map((row, i) => ({ row, i, v: value(row) }))
+    .sort((a, b) => {
+      const ae = empty(a.v);
+      const be = empty(b.v);
+      if (ae || be) return ae && be ? a.i - b.i : ae ? 1 : -1;
+      const c =
+        typeof a.v === "string" || typeof b.v === "string"
+          ? String(a.v).localeCompare(String(b.v), undefined, { numeric: true, sensitivity: "base" })
+          : Number(a.v) - Number(b.v);
+      return c * sign || a.i - b.i;
+    })
+    .map((x) => x.row);
+}
