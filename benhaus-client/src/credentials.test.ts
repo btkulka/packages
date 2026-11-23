@@ -61,6 +61,77 @@ test("loadCredential rethrows a real Benhäus failure", async () => {
   await assert.rejects(loadCredential("x", { client: broken }), (e: Error & { kind?: string }) => e.kind === "http");
 });
 
+/** A Benhäus that takes these tokens on its /credentials routes, says 403 to `wrongTool` (another tool's) and 401 to the rest. `seen`: each call's authorization. */
+function takes(tokens: string[], answer: { body: unknown }, wrongTool?: string) {
+  const seen: string[] = [];
+  const f = (async (_url: string | URL, init?: RequestInit) => {
+    const auth = String((init?.headers as Record<string, string>)?.authorization ?? "");
+    seen.push(auth);
+    const token = auth.slice(7);
+    if (token === wrongTool) return new Response(JSON.stringify({ error: "another tool's" }), { status: 403 });
+    if (!tokens.includes(token)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+    return new Response(JSON.stringify(answer.body), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  return { f, seen };
+}
+
+const withCred = (): BenhausDiscovery => ({ ...disc(), credentialsToken: "c1" });
+const VALUES = { body: { id: "x", fields: { apiKey: "k" }, updatedAt: "u" } };
+
+test("the /credentials routes take the credentials token first", async () => {
+  const { f, seen } = takes(["c1"], VALUES);
+  const c = createBenhausClient({ discover: withCred, fetch: f, toolToken: false });
+  assert.deepEqual((await c.credentials.get("x"))?.fields, { apiKey: "k" });
+  assert.deepEqual(seen, ["Bearer c1"]);
+});
+
+test("an older Benhäus, which takes the MCP token there, still answers", async () => {
+  const { f, seen } = takes(["t1"], VALUES);
+  const c = createBenhausClient({ discover: withCred, fetch: f, toolToken: false });
+  assert.deepEqual((await c.credentials.get("x"))?.fields, { apiKey: "k" });
+  assert.deepEqual(seen, ["Bearer c1", "Bearer t1"]);
+});
+
+test("without a credentials token (no file yet) a newer Benhäus refuses, and loadCredential falls back to the environment", async () => {
+  const { f } = takes(["c1"], VALUES);
+  const c = createBenhausClient({ discover: disc, fetch: f, toolToken: false });
+  await assert.rejects(c.credentials.get("x"), (e: Error & { kind?: string }) => e.kind === "unauthorized");
+  const r = await loadCredential("x", { client: c, env: { apiKey: "KEY" }, source: { KEY: "from-env" } });
+  assert.deepEqual(r?.fields, { apiKey: "from-env" });
+});
+
+test("credentials.env tries the token Benhäus started this process with first, and goes on when it's refused", async () => {
+  const env = { body: { env: { A: "1" }, missing: [] } };
+  const own = takes(["tool1", "c1"], env);
+  await createBenhausClient({ discover: withCred, fetch: own.f, toolToken: "tool1" }).credentials.env({ app: "orson" });
+  assert.deepEqual(own.seen, ["Bearer tool1"]);
+
+  const other = takes(["c1"], env, "tool1");
+  const r = await createBenhausClient({ discover: withCred, fetch: other.f, toolToken: "tool1" }).credentials.env({ app: "orson" });
+  assert.deepEqual(r, { env: { A: "1" }, missing: [] });
+  assert.deepEqual(other.seen, ["Bearer tool1", "Bearer c1"]);
+});
+
+test("credentials.get never sends the tool token; toolToken false never uses BENHAUS_TOOL_TOKEN", async () => {
+  const read = takes(["c1"], VALUES);
+  await createBenhausClient({ discover: withCred, fetch: read.f, toolToken: "tool1" }).credentials.get("x");
+  assert.deepEqual(read.seen, ["Bearer c1"]);
+
+  const before = process.env.BENHAUS_TOOL_TOKEN;
+  process.env.BENHAUS_TOOL_TOKEN = "from-env";
+  try {
+    const fromEnv = takes(["c1", "from-env"], { body: { env: {}, missing: [] } });
+    await createBenhausClient({ discover: withCred, fetch: fromEnv.f }).credentials.env({ app: "orson" });
+    assert.deepEqual(fromEnv.seen, ["Bearer from-env"]);
+    const off = takes(["c1", "from-env"], { body: { env: {}, missing: [] } });
+    await createBenhausClient({ discover: withCred, fetch: off.f, toolToken: false }).credentials.env({ app: "orson" });
+    assert.deepEqual(off.seen, ["Bearer c1"]);
+  } finally {
+    if (before === undefined) delete process.env.BENHAUS_TOOL_TOKEN;
+    else process.env.BENHAUS_TOOL_TOKEN = before;
+  }
+});
+
 test("applyBenhausEnv sets injected variables, keeps ones already set, and is quiet when closed", async () => {
   const { f, seen } = routes(() => ({ body: { env: { A: "1", B: "2" }, missing: ["C (credential x#y)"] } }));
   const target: Record<string, string | undefined> = { B: "mine" };

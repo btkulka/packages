@@ -1,7 +1,7 @@
 // @btkulka/benhaus-client: call Benhäus (Ben's desktop hub) from any local app, and share its Google sign-ins.
 
 export { createBenhausClient, type BenhausClient, type BenhausClientOptions, type CallOptions, type ToolCallResult } from "./client.js";
-export { readDiscovery, defaultDiscoveryFile, type BenhausDiscovery } from "./discovery.js";
+export { readDiscovery, defaultDiscoveryFile, credentialsTokenFile, type BenhausDiscovery } from "./discovery.js";
 export { BenhausError, isBenhausError, type BenhausErrorKind } from "./errors.js";
 export { createProfileCache, PERSON_HEADER, REMOTE_COOKIE, requestPerson, type RequestLike, type RequestPerson } from "./people.js";
 export { loadCredential, applyBenhausEnv, type LoadCredentialOptions, type LoadedCredential, type ApplyEnvOptions, type ApplyEnvResult } from "./credentials.js";

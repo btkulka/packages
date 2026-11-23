@@ -27,6 +27,11 @@ export interface BenhausClientOptions {
   timeoutMs?: number;
   /** A stand-in for global fetch. */
   fetch?: typeof fetch;
+  /**
+   * A token Benhäus gave this process when it started it, good for its own tool's credentials.env only. Default:
+   * the BENHAUS_TOOL_TOKEN environment variable; false never uses one.
+   */
+  toolToken?: string | false;
 }
 
 export interface CallOptions {
@@ -175,28 +180,50 @@ export function createBenhausClient(options: BenhausClientOptions = {}): Benhaus
     }
   }
 
-  /** POST JSON to one of the endpoint's own routes (beside /mcp), with the token. 404 is undefined. */
+  const toolToken = (): string | undefined =>
+    options.toolToken !== undefined ? options.toolToken || undefined : (typeof process !== "undefined" && process.env?.BENHAUS_TOOL_TOKEN) || undefined;
+
+  /**
+   * The tokens to try on a route, best first: for /credentials/env the one Benhäus started this process with
+   * (its own tool's variables only), then the credentials token, then the MCP token, which a Benhäus from before
+   * the credentials token takes there.
+   */
+  const routeTokens = (route: string, d: BenhausDiscovery): string[] =>
+    [...new Set([route === "/credentials/env" ? toolToken() : undefined, d.credentialsToken, d.token])].filter((t): t is string => Boolean(t));
+
+  /** POST JSON to one of the endpoint's own routes (beside /mcp), with the best token it takes. 404 is undefined. */
   async function post<T>(route: string, body: Record<string, unknown>, opts: CallOptions = {}): Promise<T | undefined> {
     let res: Response | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
       const d = locate(attempt > 0);
       if (!d) throw new BenhausError("offline", `Benhäus isn't running (no ${file}).`, { tool: route });
-      const signals = [AbortSignal.timeout(opts.timeoutMs ?? defaultTimeout)];
-      if (opts.signal) signals.push(opts.signal);
-      try {
-        res = await doFetch(new URL(route, d.url), {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${d.token}` },
-          body: JSON.stringify(body),
-          signal: AbortSignal.any(signals),
-        });
-      } catch (e) {
-        if (opts.signal?.aborted) throw new BenhausError("aborted", `Benhäus call ${route} was cancelled.`, { tool: route, cause: e });
-        if ((e as Error)?.name === "TimeoutError") throw new BenhausError("timeout", `Benhäus took too long to answer ${route}.`, { tool: route, cause: e });
-        if (attempt === 0) continue;
-        throw new BenhausError("offline", `Benhäus isn't answering at ${d.url}.`, { tool: route, cause: e });
+      let unanswered = false;
+      const tokens = routeTokens(route, d);
+      for (const [i, token] of tokens.entries()) {
+        const signals = [AbortSignal.timeout(opts.timeoutMs ?? defaultTimeout)];
+        if (opts.signal) signals.push(opts.signal);
+        try {
+          res = await doFetch(new URL(route, d.url), {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+            body: JSON.stringify(body),
+            signal: AbortSignal.any(signals),
+          });
+        } catch (e) {
+          if (opts.signal?.aborted) throw new BenhausError("aborted", `Benhäus call ${route} was cancelled.`, { tool: route, cause: e });
+          if ((e as Error)?.name === "TimeoutError") throw new BenhausError("timeout", `Benhäus took too long to answer ${route}.`, { tool: route, cause: e });
+          if (attempt === 0) {
+            unanswered = true;
+            break;
+          }
+          throw new BenhausError("offline", `Benhäus isn't answering at ${d.url}.`, { tool: route, cause: e });
+        }
+        // Refused (a stale or wrong token, a tool token for another tool): the next one, if there is one.
+        if ((res.status !== 401 && res.status !== 403) || i === tokens.length - 1) break;
+        await res.body?.cancel().catch(() => undefined);
       }
-      if (res.status === 401 && attempt === 0) continue;
+      if (unanswered) continue;
+      if (res?.status === 401 && attempt === 0) continue;
       break;
     }
     if (!res) throw new BenhausError("offline", "Benhäus isn't answering.", { tool: route });

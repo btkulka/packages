@@ -123,6 +123,55 @@ test("list shows the owner first, guests with their phones, and update changes n
   assert.ok(list[1].lastSeen, "signing in counts as being seen");
 });
 
+test("a peer (another of the owner's computers) has a key of its own, cut alone without signing a phone out", () => {
+  const store = memory();
+  const people = createPeople({ store, ownerKey: () => OWNER_KEY, ownerName: "Ben" });
+  const k = people.add({ name: "Kourtney", tools: ["fridge-planner"] });
+  const p = people.peer("  Other computers ");
+  assert.equal(p.role, "peer");
+  assert.equal(p.name, "Other computers");
+  assert.match(p.id, /^p_/);
+  assert.deepEqual(p.tools, []);
+  assert.notEqual(p.key, OWNER_KEY);
+  assert.equal(people.peer("other computers").key, p.key, "asked again, the same peer and key");
+  // A guest may share its name: they're kept apart.
+  assert.equal(people.add({ name: "Other computers", tools: [] }).role, "guest");
+
+  // Its key works as a bearer token and signs in; it's kept across a restart.
+  assert.equal(people.personFor(p.key)?.role, "peer");
+  const session = people.signIn(p.key)!;
+  assert.equal(session.person.id, p.id);
+  const again = createPeople({ store, ownerKey: () => OWNER_KEY });
+  assert.equal(again.personFor(session.token)?.role, "peer");
+  assert.equal(again.get(p.id)?.role, "peer");
+
+  // A new key cuts its sessions and old key; the owner's and the guest's phones stay.
+  const owner = people.signIn(OWNER_KEY)!;
+  const guest = people.signIn(k.key)!;
+  const oldKey = p.key;
+  people.newKey(p.id);
+  assert.equal(people.personFor(session.token), undefined);
+  assert.equal(people.personFor(oldKey), undefined);
+  assert.equal(people.personFor(owner.token)?.role, "owner");
+  assert.equal(people.personFor(guest.token)?.id, k.id);
+
+  // Listed for the host (with its sessions), never among the profiles apps show, and no tools to give it.
+  assert.deepEqual(
+    people.list().map((x) => [x.name, x.role]),
+    [
+      ["Ben", "owner"],
+      ["Kourtney", "guest"],
+      ["Other computers", "peer"],
+      ["Other computers", "guest"],
+    ],
+  );
+  assert.ok(!people.profiles().some((x) => x.role === "peer"));
+  assert.deepEqual(people.update(p.id, { tools: ["fridge-planner"] }).tools, []);
+  assert.throws(() => people.peer("  "), /needs a name/);
+  assert.ok(people.remove(p.id));
+  assert.equal(people.personFor(people.signIn(OWNER_KEY)!.token)?.role, "owner");
+});
+
 test("names and pictures: everyone's, the owner's too, for apps to show who did what", () => {
   const store = memory();
   const people = createPeople({ store, ownerKey: () => "owner-key", ownerName: "Ben" });

@@ -53,10 +53,11 @@ const profiles = createProfileCache(benhaus);    // names and pictures, read at 
 
 | Option | Default | What it does |
 |---|---|---|
-| `discoveryFile` | `~/.benhaus/mcp.json` | Where Benhäus writes its address and token. |
-| `discover` | reads `discoveryFile` | A stand-in returning `{ url, port, token }`, for tests. |
+| `discoveryFile` | `~/.benhaus/mcp.json` | Where Benhäus writes its address and token. The credentials token is read from `credentials-token.json` beside it. |
+| `discover` | reads `discoveryFile` | A stand-in returning `{ url, port, token, credentialsToken? }`, for tests. |
 | `timeoutMs` | `30000` | Per call. Each call also takes `{ timeoutMs, signal }`. |
 | `fetch` | global `fetch` | A stand-in, for tests. |
+| `toolToken` | `BENHAUS_TOOL_TOKEN` | The token Benhäus started this process with, tried first by `credentials.env` (it gets that tool's variables only). `false` never uses one. |
 
 The client:
 
@@ -98,7 +99,7 @@ const tw = await loadCredential("twilio/honeycomber", {
 
 `loadCredential` returns `{ id, fields, source, updatedAt? }` (`source` is `benhaus`, `env` or `both`) or `undefined` when a required field is missing. Both helpers wait 3 s at most for Benhäus and only throw for a real failure inside it.
 
-Values travel over the endpoint's own `/credentials/read` and `/credentials/env` routes, behind the same token, never through an MCP tool, so they stay out of Claude's chats. That keeps them out of transcripts and screenshots, not out of reach of other programs running as Ben.
+Values travel over the endpoint's own `/credentials/read` and `/credentials/env` routes, never through an MCP tool, so they stay out of Claude's chats. Those routes take their own token, in `~/.benhaus/credentials-token.json` (`credentialsTokenFile()`), not the MCP token in `mcp.json` that every Claude chat carries in its MCP headers; the client finds it, and falls back to the MCP token for a Benhäus from before it. A process Benhäus started also has `BENHAUS_TOOL_TOKEN`, which `credentials.env` tries first: it gets that tool's variables and nothing else. Never copy either token into an MCP config. All this keeps values out of transcripts, logs and screenshots, not out of reach of other programs running as Ben.
 
 ### Errors
 

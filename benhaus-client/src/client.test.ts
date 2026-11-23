@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createBenhausClient } from "./client.js";
-import { readDiscovery, type BenhausDiscovery } from "./discovery.js";
+import { credentialsTokenFile, readDiscovery, type BenhausDiscovery } from "./discovery.js";
 import { isBenhausError } from "./errors.js";
 
 type Seen = { url: string; auth: string; body: { method: string; params: { name: string; arguments: Record<string, unknown> } } };
@@ -116,6 +116,17 @@ test("readDiscovery reads the file and rejects one without a token", () => {
   assert.deepEqual(readDiscovery(good), { url: "http://127.0.0.1:4791/mcp", token: "abc", pid: 7, port: 4791 });
   assert.equal(readDiscovery(bad), undefined);
   assert.equal(readDiscovery(join(dir, "missing.json")), undefined);
+});
+
+test("readDiscovery adds the credentials token from credentials-token.json beside it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "benhaus-client-"));
+  const file = join(dir, "mcp.json");
+  writeFileSync(file, JSON.stringify({ url: "http://127.0.0.1:4790/mcp", token: "mcp-token" }));
+  writeFileSync(credentialsTokenFile(file), JSON.stringify({ token: "cred-token", note: "…" }));
+  assert.equal(credentialsTokenFile(file), join(dir, "credentials-token.json"));
+  assert.deepEqual(readDiscovery(file), { url: "http://127.0.0.1:4790/mcp", token: "mcp-token", port: 4790, credentialsToken: "cred-token" });
+  writeFileSync(credentialsTokenFile(file), "{ cut off");
+  assert.equal(readDiscovery(file)?.credentialsToken, undefined);
 });
 
 import { createProfileCache, requestPerson } from "./people.js";

@@ -8,15 +8,20 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 //
 // Sessions from before people existed were stored as [hash, at]: they read as the owner's, so phones that were
 // signed in stay signed in.
+//
+// A peer is another of the owner's computers: the hub there calling this one's remote for the owner (Benhäus on a
+// Mac starting the PC's servers). It has a name and a key of its own, kept with the guests, and gets only the calls
+// the host's policy gives peers, so the owner's key never has to leave this computer, and a peer's new key cuts
+// that link alone without signing a phone out.
 
-export type Role = "owner" | "guest";
+export type Role = "owner" | "guest" | "peer";
 
 export interface Person {
-  /** "owner" for the owner; "g_…" for a guest. */
+  /** "owner" for the owner; "g_…" for a guest; "p_…" for a peer. */
   id: string;
   name: string;
   role: Role;
-  /** The tools a guest may use, by the host's tool id. The owner may use everything (empty here). */
+  /** The tools a guest may use, by the host's tool id. The owner and peers may use every tool (empty here). */
   tools: string[];
   createdAt: string;
   /** When one of their phones last made a request (rounded to a few minutes). */
@@ -34,8 +39,14 @@ export interface Guest extends Person {
   key: string;
 }
 
-/** A person as listed for the host's settings: with how many phones are signed in. */
-export type Listed = (Person | Guest) & { sessions: number };
+/** Another of the owner's computers, as the host sees it: with its key, which the host hands that computer itself. */
+export interface Peer extends Person {
+  role: "peer";
+  key: string;
+}
+
+/** A person as listed for the host's settings: with how many phones (a peer: sessions) are signed in. */
+export type Listed = (Person | Guest | Peer) & { sessions: number };
 
 export interface SecretStore {
   get(name: string): string | null | undefined;
@@ -62,18 +73,20 @@ export interface PeopleOptions {
 
 export interface People {
   owner(): Person;
-  /** The owner first, then the guests in the order added, each with their phones signed in. */
+  /** The owner first, then the guests and peers in the order added, each with their phones signed in. */
   list(): Listed[];
-  get(id: string): Person | Guest | undefined;
+  get(id: string): Person | Guest | Peer | undefined;
   add(input: { name: string; tools: string[]; avatar?: string }): Guest;
-  /** A person's name, picture (null takes it away) or, for a guest, tools. The owner ("owner") has a name and picture only. */
-  update(id: string, patch: { name?: string; tools?: string[]; avatar?: string | null }): Person | Guest;
-  /** Everyone's name and picture, for apps showing who did what. Never a key. */
+  /** The peer of that name (another of the owner's computers), made with a key of its own the first time it's asked for. */
+  peer(name: string): Peer;
+  /** A person's name, picture (null takes it away) or, for a guest, tools. The owner ("owner") and peers have a name and picture only. */
+  update(id: string, patch: { name?: string; tools?: string[]; avatar?: string | null }): Person | Guest | Peer;
+  /** Everyone's name and picture, for apps showing who did what. Never a key, and never a peer (a computer, not a person). */
   profiles(): Profile[];
-  /** Removes a guest and signs their phones out. */
+  /** Removes a guest or a peer and signs them out. */
   remove(id: string): boolean;
-  /** A guest's new key: their old link stops working and their phones sign out. */
-  newKey(id: string): Guest;
+  /** A guest's or a peer's new key: the old one stops working and their sessions end. */
+  newKey(id: string): Guest | Peer;
   /** A key typed or carried by a link: a new session for whoever it belongs to. Undefined for a wrong key. */
   signIn(key: string): { token: string; person: Person } | undefined;
   /** Who a session token (a cookie) belongs to, or a key given as a bearer token (a script). */
@@ -131,22 +144,29 @@ export function createPeople(options: PeopleOptions): People {
     return { id: "owner", name, role: "owner", tools: [], createdAt: new Date(0).toISOString(), ...(avatar ? { avatar } : {}) };
   }
 
-  let guests: Guest[] | undefined;
+  /** Everyone with a key of their own: guests and peers, in the order added, kept together under peopleName. */
+  let keyed: (Guest | Peer)[] | undefined;
   let sessions: Session[] | undefined;
 
-  function readGuests(): Guest[] {
-    if (guests) return guests;
+  function readKeyed(): (Guest | Peer)[] {
+    if (keyed) return keyed;
     try {
       const raw = JSON.parse(options.store.get(peopleName) ?? "[]") as unknown;
-      guests = (Array.isArray(raw) ? raw : [])
-        .filter((g): g is Guest => Boolean(g && typeof g === "object" && typeof (g as Guest).id === "string" && typeof (g as Guest).key === "string"))
-        .map((g) => ({ ...g, role: "guest" as const, name: cleanName(String(g.name ?? "")) || "Guest", tools: cleanTools(Array.isArray(g.tools) ? g.tools : []) }));
+      keyed = (Array.isArray(raw) ? raw : [])
+        .filter((g): g is Guest | Peer => Boolean(g && typeof g === "object" && typeof (g as Guest).id === "string" && typeof (g as Guest).key === "string"))
+        // A peer keeps no tools, so a version from before peers reads one as a guest with nothing shared.
+        .map((g): Guest | Peer =>
+          g.role === "peer"
+            ? { ...g, role: "peer", name: cleanName(String(g.name ?? "")) || "Computer", tools: [] }
+            : { ...g, role: "guest", name: cleanName(String(g.name ?? "")) || "Guest", tools: cleanTools(Array.isArray(g.tools) ? g.tools : []) },
+        );
     } catch {
-      guests = [];
+      keyed = [];
     }
-    return guests;
+    return keyed;
   }
-  const saveGuests = () => options.store.set(peopleName, JSON.stringify(readGuests()));
+  const saveKeyed = () => options.store.set(peopleName, JSON.stringify(readKeyed()));
+  const readGuests = () => readKeyed().filter((g): g is Guest => g.role === "guest");
 
   function readSessions(): Session[] {
     if (sessions) return sessions;
@@ -166,13 +186,13 @@ export function createPeople(options: PeopleOptions): People {
   // The owner's are written without a person, as before, so an older host reading them still knows them.
   const saveSessions = () => options.store.set(sessionsName, JSON.stringify(readSessions().map((s) => (s.person === "owner" ? [s.hash, s.at] : [s.hash, s.at, s.person]))));
 
-  const find = (id: string) => readGuests().find((g) => g.id === id);
+  const find = (id: string) => readKeyed().find((g) => g.id === id);
   const need = (id: string) => {
     const g = find(id);
     if (!g) throw new Error(`No such person: ${id}`);
     return g;
   };
-  const byId = (id: string): Person | Guest | undefined => (id === "owner" ? ownerPerson() : find(id));
+  const byId = (id: string): Person | Guest | Peer | undefined => (id === "owner" ? ownerPerson() : find(id));
 
   function newSession(person: string): string {
     const token = randomBytes(24).toString("base64url");
@@ -186,7 +206,7 @@ export function createPeople(options: PeopleOptions): People {
   }
 
   let lastSeenWrite = 0;
-  function seen(g: Guest) {
+  function seen(g: Guest | Peer) {
     const t = now();
     const last = g.lastSeen ? Date.parse(g.lastSeen) : 0;
     if (t - last < 5 * 60_000) return;
@@ -194,7 +214,7 @@ export function createPeople(options: PeopleOptions): People {
     // Written at most once a minute across everyone: a phone's every request shouldn't hit the disk.
     if (t - lastSeenWrite > 60_000) {
       lastSeenWrite = t;
-      saveGuests();
+      saveKeyed();
     }
   }
 
@@ -203,7 +223,7 @@ export function createPeople(options: PeopleOptions): People {
     list() {
       const counts = new Map<string, number>();
       for (const s of readSessions()) counts.set(s.person, (counts.get(s.person) ?? 0) + 1);
-      return [{ ...ownerPerson(), sessions: counts.get("owner") ?? 0 }, ...readGuests().map((g) => ({ ...g, sessions: counts.get(g.id) ?? 0 }))];
+      return [{ ...ownerPerson(), sessions: counts.get("owner") ?? 0 }, ...readKeyed().map((g) => ({ ...g, sessions: counts.get(g.id) ?? 0 }))];
     },
     profiles() {
       return [ownerPerson(), ...readGuests()].map((p) => ({ id: p.id, name: p.name, role: p.role, ...(p.avatar ? { avatar: p.avatar } : {}) }));
@@ -215,9 +235,19 @@ export function createPeople(options: PeopleOptions): People {
       if (readGuests().some((g) => g.name.toLowerCase() === name.toLowerCase())) throw new Error(`${name} is already here.`);
       const avatar = cleanAvatar(input.avatar);
       const g: Guest = { id: `g_${randomBytes(6).toString("hex")}`, name, role: "guest", tools: cleanTools(input.tools), createdAt: new Date(now()).toISOString(), key: newKeyText(), ...(avatar ? { avatar } : {}) };
-      readGuests().push(g);
-      saveGuests();
+      readKeyed().push(g);
+      saveKeyed();
       return g;
+    },
+    peer(name) {
+      const n = cleanName(name);
+      if (!n) throw new Error("A computer needs a name.");
+      const had = readKeyed().find((g): g is Peer => g.role === "peer" && g.name.toLowerCase() === n.toLowerCase());
+      if (had) return had;
+      const p: Peer = { id: `p_${randomBytes(6).toString("hex")}`, name: n, role: "peer", tools: [], createdAt: new Date(now()).toISOString(), key: newKeyText() };
+      readKeyed().push(p);
+      saveKeyed();
+      return p;
     },
     update(id, patch) {
       const name = patch.name === undefined ? undefined : cleanName(patch.name);
@@ -231,28 +261,29 @@ export function createPeople(options: PeopleOptions): People {
       }
       const g = need(id);
       if (name !== undefined) {
-        if (readGuests().some((o) => o.id !== id && o.name.toLowerCase() === name.toLowerCase())) throw new Error(`${name} is already here.`);
+        if (readKeyed().some((o) => o.id !== id && o.role === g.role && o.name.toLowerCase() === name.toLowerCase())) throw new Error(`${name} is already here.`);
         g.name = name;
       }
-      if (patch.tools !== undefined) g.tools = cleanTools(patch.tools);
+      // A peer may use every tool, through the calls the host gives peers: it keeps no list.
+      if (patch.tools !== undefined && g.role === "guest") g.tools = cleanTools(patch.tools);
       if (avatar === null) delete g.avatar;
       else if (avatar !== undefined) g.avatar = avatar;
-      saveGuests();
+      saveKeyed();
       return g;
     },
     remove(id) {
-      const all = readGuests();
+      const all = readKeyed();
       const i = all.findIndex((g) => g.id === id);
       if (i < 0) return false;
       all.splice(i, 1);
-      saveGuests();
+      saveKeyed();
       this.endSessions(id);
       return true;
     },
     newKey(id) {
       const g = need(id);
       g.key = newKeyText();
-      saveGuests();
+      saveKeyed();
       this.endSessions(id);
       return g;
     },
@@ -260,7 +291,7 @@ export function createPeople(options: PeopleOptions): People {
       const k = key.trim();
       if (!k) return undefined;
       if (sameSecret(k, options.ownerKey())) return { token: newSession("owner"), person: ownerPerson() };
-      const g = readGuests().find((x) => sameSecret(k, x.key));
+      const g = readKeyed().find((x) => sameSecret(k, x.key));
       if (!g) return undefined;
       seen(g);
       return { token: newSession(g.id), person: g };
@@ -272,12 +303,13 @@ export function createPeople(options: PeopleOptions): People {
       if (s) {
         if (now() - s.at >= life) return undefined;
         const p = byId(s.person);
-        if (p && p.role === "guest") seen(p as Guest);
+        if (p && p.role !== "owner") seen(p as Guest | Peer);
         return p;
       }
-      // A key itself: a script's bearer token, or a cookie from before sessions (the owner's key).
+      // A key itself: a script's or a peer's bearer token, or a cookie from before sessions (the owner's key).
       if (sameSecret(token, options.ownerKey())) return ownerPerson();
-      const g = readGuests().find((x) => sameSecret(token, x.key));
+      const g = readKeyed().find((x) => sameSecret(token, x.key));
+      if (g) seen(g);
       return g;
     },
     signOut(token) {

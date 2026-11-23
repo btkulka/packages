@@ -68,6 +68,32 @@ test("notices: a guest sees their tools' and those that open their tools", () =>
   assert.ok(seesNotice(owner, { app: "todoist" }));
 });
 
+const computer: Person = { id: "p_1", name: "Other computers", role: "peer", tools: [], createdAt: "" };
+
+test("a peer makes only the peer calls, on any tool, hears and sees nothing it isn't given, and reaches only tools' ports", () => {
+  const withPeer = definePolicy({
+    calls: { owner: ["mail:send", "services:start"], guest: ["services:start"], peer: ["services:start", "services:logs"] },
+    settings: { owner: ["notify"], guest: [] },
+    events: { guest: ["notices"] },
+    toolCalls: ["services:start"],
+  });
+  assert.deepEqual(mayCall(withPeer, computer, "services:start", ["habit-tracker"]), { ok: true });
+  assert.deepEqual(mayCall(withPeer, computer, "services:logs", ["toejam"]), { ok: true });
+  assert.deepEqual(mayCall(withPeer, computer, "mail:send"), { ok: false, reason: "call" });
+  assert.ok(!mayChange(withPeer, computer, { notify: {} }));
+  assert.ok(!mayHear(withPeer, computer, "notices"));
+  assert.ok(mayHear(withPeer, owner, "chat:stream"), "the owner, left out, still hears everything");
+  // A policy that names no peer lists gives a peer nothing at all.
+  assert.deepEqual(mayCall(policy, computer, "config:get"), { ok: false, reason: "call" });
+  assert.ok(!mayHear(policy, computer, "services"));
+  assert.ok(usesTool(computer, "habit-tracker"));
+  const tools = [{ id: "habit-tracker", ports: [42248] }];
+  assert.ok(mayReachPort(computer, 42248, tools));
+  assert.ok(!mayReachPort(computer, 9999, tools), "not a port no tool answers on, which the owner may");
+  assert.ok(!seesNotice(computer, { app: "habit-tracker" }));
+  assert.deepEqual(describe({ ...computer, key: "secret" } as Person), { id: "p_1", name: "Other computers", role: "peer", tools: [] });
+});
+
 test("describe never carries a key", () => {
   const withKey = { ...kourtney, key: "secret" } as Person;
   assert.deepEqual(Object.keys(describe(withKey)).sort(), ["id", "name", "role", "tools"]);
