@@ -67,7 +67,7 @@ const Thumbs = ({ pics }: { pics: NonNullable<Extract<ChatItem, { kind: "you" }>
 );
 
 /** The fields a row draws from. */
-const DRAWN = ["kind", "id", "text", "name", "detail", "state", "result", "error"] as const;
+const DRAWN = ["kind", "id", "text", "name", "detail", "state", "result", "error", "at", "from"] as const;
 
 /** Two rows that draw the same: a chat's change brings new copies of the rows it carries, so they're compared by what they show. */
 function sameItem(a: ChatItem, b: ChatItem): boolean {
@@ -89,18 +89,20 @@ function sameItem(a: ChatItem, b: ChatItem): boolean {
 const Row = memo(
   function Row({ item }: { item: ChatItem }) {
     const ui = useUi();
-    if (item.kind === "you" && (item.images || item.files))
+    if (item.kind === "you" && (item.images || item.files || item.from))
       return (
         <div className="ck-mine">
           {item.images && <Thumbs pics={item.images} />}
           {item.files && <FileChips files={item.files} ui={ui} />}
           {item.text && <div className="ck-you">{item.text}</div>}
+          {item.from && <div className="ck-from">{item.from}</div>}
         </div>
       );
     if (item.kind === "you") return <div className="ck-you">{item.text}</div>;
     if (item.kind === "claude") return <Prose text={item.text} />;
     if (item.kind === "tool" && item.block) return <BlockRow item={item as Extract<ChatItem, { kind: "tool" }> & { block: ChatBlock }} />;
-    if (item.kind === "tool") return <ToolRow item={item} />;
+    // A tool the app draws its own way (ui.toolRow), else the usual row.
+    if (item.kind === "tool") return ui.toolRow?.(item) ?? <ToolRow item={item} />;
     return <p className={`ck-note${item.error ? " is-error" : ""}`}>{item.text}</p>;
   },
   (prev, next) => sameItem(prev.item, next.item),
@@ -680,61 +682,65 @@ export function ChatView({ chat, where = "panel", onHide }: { chat: ChatState; w
         void attach([...e.dataTransfer.files]);
       }}
     >
-      <PicsContext.Provider value={pictures}>
-        <BlocksContext.Provider value={blocks}>
-          <div
-            ref={log}
-            className="ck-log"
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-            }}
-          >
-            {!items.length && chat.status !== "working" && (
-              <div className="ck-empty">
-                <p className="ck-headline">{chat.about ? `Ask about ${chat.about}.` : "Ask anything, or ask for code."}</p>
-                <p className="ck-callout ck-ink3">
-                  {intro ?? `Claude Code in ${ui.showPath(chat.folder)}, with your skills, CLAUDE.md files and MCP servers.`}{ui.emptyNote ? ` ${ui.emptyNote}` : ""}
-                </p>
-                {!chat.about && where === "panel" && limits?.past !== false && (
-                  <button type="button" className="ck-chip ck-pastopen" onClick={() => store.setPast(true)}>
-                    <HistoryIcon size={13} />
-                    Pick up a past chat
-                  </button>
-                )}
-              </div>
-            )}
-            {(verbosity === "conversational" ? items.filter((it) => it.kind === "you" || it.kind === "claude" || (it.kind === "tool" && it.block) || (it.kind === "note" && it.error)) : items).map((it) => (
-              <Row key={it.id} item={it} />
-            ))}
-            <Live chat={chat} log={log} pinned={pinned} />
-            {asks.map((a) => (
-              <AskCard key={a.id} ask={a} />
-            ))}
-            {chat.status === "error" && (
-              <div className="ck-ask">
-                <span className="ck-callout">Claude Code stopped</span>
-                {chat.error && <span className="ck-caption ck-ink2">{chat.error}</span>}
-                {signedOut && (ui.phone || !ui.signIn) && (
-                  <span className="ck-caption ck-ink3">
-                    {ui.phone ? "Sign Claude Code in on the computer it runs on." : "Sign Claude Code in: run claude in a terminal and /login."} This chat starts again once it's in.
-                  </span>
-                )}
-                <div className="ck-row ck-gap">
-                  {!ui.phone && signedOut && ui.signIn && (
-                    <Button variant="primary" size="sm" disabled={signing} onClick={signIn}>
-                      {signing ? "Finishing in your browser…" : "Sign in"}
-                    </Button>
+      {/* The conversation, and beside it at the right edge the app's rail (ui.rail), when it has one. */}
+      <div className="ck-body">
+        <PicsContext.Provider value={pictures}>
+          <BlocksContext.Provider value={blocks}>
+            <div
+              ref={log}
+              className="ck-log"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+              }}
+            >
+              {!items.length && chat.status !== "working" && (
+                <div className="ck-empty">
+                  <p className="ck-headline">{chat.about ? `Ask about ${chat.about}.` : "Ask anything, or ask for code."}</p>
+                  <p className="ck-callout ck-ink3">
+                    {intro ?? `Claude Code in ${ui.showPath(chat.folder)}, with your skills, CLAUDE.md files and MCP servers.`}{ui.emptyNote ? ` ${ui.emptyNote}` : ""}
+                  </p>
+                  {!chat.about && where === "panel" && limits?.past !== false && (
+                    <button type="button" className="ck-chip ck-pastopen" onClick={() => store.setPast(true)}>
+                      <HistoryIcon size={13} />
+                      Pick up a past chat
+                    </button>
                   )}
-                  <button type="button" className="ck-chip" onClick={() => void t.start(chat.id).catch(toastError)}>
-                    Start again
-                  </button>
                 </div>
-              </div>
-            )}
-          </div>
-        </BlocksContext.Provider>
-      </PicsContext.Provider>
+              )}
+              {(verbosity === "conversational" ? items.filter((it) => it.kind === "you" || it.kind === "claude" || (it.kind === "tool" && it.block) || (it.kind === "note" && it.error)) : items).map((it) => (
+                <Row key={it.id} item={it} />
+              ))}
+              <Live chat={chat} log={log} pinned={pinned} />
+              {asks.map((a) => (
+                <AskCard key={a.id} ask={a} />
+              ))}
+              {chat.status === "error" && (
+                <div className="ck-ask">
+                  <span className="ck-callout">Claude Code stopped</span>
+                  {chat.error && <span className="ck-caption ck-ink2">{chat.error}</span>}
+                  {signedOut && (ui.phone || !ui.signIn) && (
+                    <span className="ck-caption ck-ink3">
+                      {ui.phone ? "Sign Claude Code in on the computer it runs on." : "Sign Claude Code in: run claude in a terminal and /login."} This chat starts again once it's in.
+                    </span>
+                  )}
+                  <div className="ck-row ck-gap">
+                    {!ui.phone && signedOut && ui.signIn && (
+                      <Button variant="primary" size="sm" disabled={signing} onClick={signIn}>
+                        {signing ? "Finishing in your browser…" : "Sign in"}
+                      </Button>
+                    )}
+                    <button type="button" className="ck-chip" onClick={() => void t.start(chat.id).catch(toastError)}>
+                      Start again
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </BlocksContext.Provider>
+        </PicsContext.Provider>
+        {ui.rail?.(chat, where)}
+      </div>
 
       <footer className="ck-foot">
         {chat.jobs && chat.jobs.length > 0 && <JobsBar jobs={chat.jobs} />}

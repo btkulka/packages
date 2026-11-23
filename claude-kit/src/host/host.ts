@@ -35,7 +35,7 @@ import { fileType, MAX_FILE_BYTES, readablePath } from "./blockfiles.js";
 import { FileStore } from "./files.js";
 import { ImageStore, type ImageTools } from "./images.js";
 import { ASK_TOOL, BLOCK_SERVER, BLOCK_TOOL, BLOCK_TOOL_DESCRIPTION, BLOCK_TOOL_NAME, blockToolShape, questionAnswers, questionsBlock, type ZodLike } from "./blocks.js";
-import { contextWrapper, detailOf, firstLine, MAX_ITEMS, rowMaker } from "./items.js";
+import { contextWrapper, detailOf, firstLine, fromWrapper, MAX_ITEMS, rowMaker } from "./items.js";
 import { toolLabel } from "../words.js";
 import type { AgentSdk, CanUseToolLike, PermissionResultLike, QueryLike, Said, SdkMessage, SdkUserMessage, SlashCommandLike, ToolResultLike } from "./sdk.js";
 import { openTerminal } from "./terminal.js";
@@ -103,6 +103,8 @@ export interface ChatHostOptions {
   queryOptions?: (chat: { id: string; folder: string }) => Record<string, unknown>;
   /** The tag a new chat's page context travels in, ahead of the first message: "app-context". */
   contextTag?: string;
+  /** The tag the line saying where a message was sent from travels in, ahead of its words (send's `from`): "sent-from". */
+  fromTag?: string;
   /** Past chats: only the app's folder's conversations ("folder", the default) or every one on the machine ("all"). */
   pastChats?: "folder" | "all" | "none";
   /**
@@ -260,6 +262,7 @@ export class ChatHost {
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
   private readonly file: string;
   private readonly context: ReturnType<typeof contextWrapper>;
+  private readonly from: ReturnType<typeof fromWrapper>;
   private readonly rows: ReturnType<typeof rowMaker>;
   readonly images: ImageStore;
   readonly files: FileStore;
@@ -269,7 +272,8 @@ export class ChatHost {
     this.images = new ImageStore(opts.imagesDir ?? join(opts.dataDir, "chat-images"), opts.imageTools);
     this.files = new FileStore(opts.filesDir ?? join(opts.dataDir, "chat-files"));
     this.context = contextWrapper(opts.contextTag ?? "app-context");
-    this.rows = rowMaker((s) => this.images.keepBlock(s), this.context.strip);
+    this.from = fromWrapper(opts.fromTag ?? "sent-from");
+    this.rows = rowMaker((s) => this.images.keepBlock(s), this.context.strip, this.from.read);
     const saved = this.readSaved();
     this.picked = saved.picked ?? {};
     const d = this.defaults();
@@ -581,12 +585,12 @@ export class ChatHost {
         const items = this.rows.assistantItems(m.uuid, m.message?.content, "running");
         if (items.some((i) => i.kind === "claude")) this.setStream(c, "", true);
         // Web search's results come in the same message as its call.
-        if (items.length) this.set(c, { items: this.rows.withResults([...c.state.items, ...items], m.message?.content).slice(-MAX_ITEMS) });
+        if (items.length) this.set(c, { items: this.rows.withResults([...c.state.items, ...items], m.message?.content, new Date().toISOString()).slice(-MAX_ITEMS) });
         if (m.error) this.note(c, `Claude Code: ${m.error}`, true);
         return;
       }
       case "user":
-        if (!m.parent_tool_use_id) this.set(c, { items: this.rows.withResults(c.state.items, m.message?.content) });
+        if (!m.parent_tool_use_id) this.set(c, { items: this.rows.withResults(c.state.items, m.message?.content, new Date().toISOString()) });
         return;
       case "result": {
         // A reply cut off by Stop keeps what it had written.
@@ -948,10 +952,10 @@ export class ChatHost {
 
   /* --------------------------------------------------------------- actions */
 
-  /** Sends a message to a chat (the one shown unless named), as if typed there, with any images and files attached. */
-  async send(text: string, ref?: string, images?: NewChatImage[], files?: NewChatFile[]): Promise<ChatState> {
+  /** Sends a message to a chat (the one shown unless named), as if typed there, with any images and files attached; `from` says where it was sent from (a tag under it, a line Claude reads). */
+  async send(text: string, ref?: string, images?: NewChatImage[], files?: NewChatFile[], from?: string): Promise<ChatState> {
     const c = this.find(ref);
-    return this.say(c, text, await this.attach(c, images), this.attachFiles(c, files));
+    return this.say(c, text, await this.attach(c, images), this.attachFiles(c, files), from);
   }
 
   /** Files to send: checked (or kept, when uploaded), named on the message for the screens and listed for Claude. */
@@ -975,7 +979,7 @@ export class ChatHost {
    * chat was started with, if any is still waiting. Images go ahead of the
    * text, as the API suggests.
    */
-  private say(c: Chat, text: string, images: Awaited<ReturnType<ChatHost["attach"]>> = [], files: ChatFile[] = []): ChatState {
+  private say(c: Chat, text: string, images: Awaited<ReturnType<ChatHost["attach"]>> = [], files: ChatFile[] = [], from?: string): ChatState {
     const t = text.trim();
     if (!t && !images.length && !files.length) throw new Error("Say something to send.");
     // A block waiting: words alone answer it (the turn is waiting on it, so a message would only queue behind it); with images or files, it ends and the message goes.
@@ -986,8 +990,9 @@ export class ChatHost {
     }
     this.settleBlocks(c, `${this.who()} sent a message instead.`);
     this.notify(c);
-    // The files go to Claude as a list of paths after the words (it reads them with its tools); the screens show them as chips.
-    const words = this.context.wrap([t, FileStore.trailer(files)].filter(Boolean).join("\n\n"), c.context);
+    // The files go to Claude as a list of paths after the words (it reads them with its tools); the screens show them as chips. Where it was sent from goes first, on a line of its own.
+    from = from?.trim() || undefined;
+    const words = this.context.wrap(this.from.wrap([t, FileStore.trailer(files)].filter(Boolean).join("\n\n"), from), c.context);
     const sent: Said = images.length
       ? [
           ...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.type as MediaType, data: i.data } })),
@@ -997,7 +1002,7 @@ export class ChatHost {
     c.context = undefined;
     if (!c.title) this.titleFrom(c, t || (images.length === 1 ? "An image" : images.length ? `${images.length} images` : files.length === 1 ? files[0].name : `${files.length} files`));
     this.save();
-    this.push(c, { kind: "you", id: this.nextId(), text: t, images: images.length ? images.map((i) => i.image) : undefined, files: files.length ? files : undefined });
+    this.push(c, { kind: "you", id: this.nextId(), text: t, images: images.length ? images.map((i) => i.image) : undefined, files: files.length ? files : undefined, ...(from ? { from } : {}) });
     this.set(c, { status: "working", error: undefined });
     if (c.session) c.session.inbox.push(sent);
     else {
@@ -1035,7 +1040,7 @@ export class ChatHost {
     c.context = o.context?.trim() || undefined;
     this.listChanged();
     // Its session starts with its first message.
-    if (o.text?.trim()) return this.say(c, o.text);
+    if (o.text?.trim()) return this.say(c, o.text, [], [], o.from);
     return this.stateOf(c);
   }
 
@@ -1066,8 +1071,8 @@ export class ChatHost {
     return this.state();
   }
 
-  /** What a kept conversation is called: its /rename title, Claude Code's summary or its first message, without a page's context. */
-  private pastTitle = (s: { customTitle?: string; summary?: string; firstPrompt?: string }) => this.context.strip(s.customTitle || s.summary || s.firstPrompt || "");
+  /** What a kept conversation is called: its /rename title, Claude Code's summary or its first message, without a page's context or where it was sent from. */
+  private pastTitle = (s: { customTitle?: string; summary?: string; firstPrompt?: string }) => this.from.read(this.context.strip(s.customTitle || s.summary || s.firstPrompt || "")).text;
 
   /**
    * Past chats: the conversations Claude Code kept on this machine, newest

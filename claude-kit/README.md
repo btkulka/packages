@@ -62,11 +62,13 @@ Options worth knowing:
   - `intro` replaces the empty chat's line ("with your skills, CLAUDE.md files and MCP servers"), which isn't true of a host that leaves them out.
 
   None of this keeps out Ben's settings and MCP servers. For that, pass `queryOptions: () => ({ settingSources: ["project"], extraArgs: { "strict-mcp-config": null } })`, and add PreToolUse `hooks` for which commands and paths are allowed.
-- **`contextTag`** (`"app-context"`), **`person`** (`"The user"`), **`folderHint`**, **`file`**, **`legacyFile`**, **`env`**, **`unseenMs`**, **`idleMs`**.
+- **`contextTag`** (`"app-context"`), **`fromTag`** (`"sent-from"`), **`person`** (`"The user"`), **`folderHint`**, **`file`**, **`legacyFile`**, **`env`**, **`unseenMs`**, **`idleMs`**.
 
 Methods match what the screens call: `state`, `start`, `seen`, `send`, `stop`, `newChat`, `select`, `close`, `answer`, `terminal`, `configure`, `past`, `load`, `image`. There are also `on(listener)`, plus `letIdleGo(all)`, `defaultsChanged(patch)`, `restartStopped()`, `dropSessions()`, `end()` and `dispose()`. Call `host.end()` when the app quits.
 
 `host.newChat({ text, context, about, title, folder, model })` is the app's own "Ask Claude about this". `context` goes to Claude ahead of the first message without being shown, and `about` names what the chat is about.
+
+`host.send(text, chat, images, files, from)` and `newChat({ from })` say where a message was sent from, as the app names it (`"desk · Zagreus"`, `"phone · iPhone"`). Claude gets it as a line ahead of the words (`<sent-from>phone · iPhone</sent-from>`), the row shows it as a small tag under the message, and it's read back off the transcript when the chat is picked up again. Left out, nothing changes. The screens never pass it; the app's main side does, since it knows who's calling.
 
 ## Electron
 
@@ -138,6 +140,8 @@ Files go with a message as images do: dropped, pasted or picked (the paperclip t
 - `setMode` and `setModel`: route a pick somewhere else, like the app's settings
 - `menu(items, chat, where)` and `onMenu`: add to or change the ⋯ menu
 - `headerActions`
+- `toolRow(item)`: draw a tool row the app's way (Benhäus's load_context is a card); undefined draws the usual row. A tool row carries `at`, when its result came back, live or read back from the transcript
+- `rail(chat, where)`: a thin column at the chat's right edge, beside the conversation (Benhäus's apps whose context the chat has loaded); nothing, and the conversation has the width
 - `showPath`, `relTime`, `errorText`, `title`, `emptyNote`, `machine`
 - `portal`
 

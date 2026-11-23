@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createClaudeStore, type ClaudeSnapshot, type ClaudeStore } from "../client/index.js";
-import type { ChatState, ClaudeMode, ClaudeTransport } from "../types.js";
+import type { ChatItem, ChatState, ClaudeMode, ClaudeTransport } from "../types.js";
 import { relTime, showPath } from "../words.js";
 import { builtIns, type Components, type MenuItem } from "./primitives.js";
 
@@ -36,6 +36,10 @@ export interface ClaudeUi {
   onMenu?(item: MenuItem, chat: ChatState, where: Where): void;
   /** Buttons of the app's in a chat's header, before ⋯. */
   headerActions?(chat: ChatState, where: Where): ReactNode;
+  /** A tool row drawn the app's way (Benhäus draws its load_context as a card); undefined draws the usual row. */
+  toolRow?(item: Extract<ChatItem, { kind: "tool" }>): ReactNode;
+  /** A thin column of the app's at a chat's right edge, beside the conversation (Benhäus: the apps whose context it has loaded). Nothing, and the conversation has the width. */
+  rail?(chat: ChatState, where: Where): ReactNode;
   /** A path as the app shows paths. */
   showPath(path: string): string;
   relTime(iso: string): string;

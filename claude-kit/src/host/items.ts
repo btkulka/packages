@@ -60,7 +60,19 @@ export function contextWrapper(tag: string) {
   };
 }
 
-export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string) {
+/** Where a message was sent from, as a line in `tag` ahead of its words that Claude reads; and how to read it back off. */
+export function fromWrapper(tag: string) {
+  const line = new RegExp(`^\\s*<${tag}>([^<\\n]*)<\\/${tag}>\\s*`);
+  return {
+    wrap: (text: string, from?: string) => (from?.trim() ? `<${tag}>${from.trim().replace(/[<\n]/g, " ")}</${tag}>\n${text}` : text),
+    read: (text: string): { text: string; from?: string } => {
+      const m = line.exec(text);
+      return m ? { text: text.slice(m[0].length), from: m[1].trim() || undefined } : { text };
+    },
+  };
+}
+
+export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string, readFrom: (text: string) => { text: string; from?: string } = (text) => ({ text })) {
   /** The images in a message or a tool's result, kept so the screens can draw them. */
   function imagesOf(content: unknown): ChatImage[] | undefined {
     const found = blocks(content)
@@ -82,8 +94,8 @@ export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string
     });
   }
 
-  /** Tool results land on their tool rows. */
-  function withResults(items: ChatItem[], content: unknown): ChatItem[] {
+  /** Tool results land on their tool rows, stamped `at` (when they came back). */
+  function withResults(items: ChatItem[], content: unknown, at?: string): ChatItem[] {
     const results = new Map(blocks(content).filter((b) => b.type === "tool_result" || b.type.endsWith("_tool_result")).map((b) => [b.tool_use_id, b]));
     if (!results.size) return items;
     return items.map((it) => {
@@ -93,7 +105,7 @@ export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string
       // One answered live keeps how the host said it; one read back takes its outcome from the result.
       const outcome = it.block?.state === "waiting" ? outcomeFrom(it.block, text, r.is_error) : undefined;
       const block = it.block && (outcome ? settled(it.block, outcome) : it.block);
-      return { ...it, state: r.is_error ? "error" : "done", result: text.length > 800 ? `${text.slice(0, 800)}…` : text || undefined, images: imagesOf(r.content), ...(block ? { block } : {}) };
+      return { ...it, state: r.is_error ? "error" : "done", result: text.length > 800 ? `${text.slice(0, 800)}…` : text || undefined, images: imagesOf(r.content), ...(block ? { block } : {}), ...(at ? { at } : {}) };
     });
   }
 
@@ -105,13 +117,19 @@ export function rowMaker(keep: KeepBlock, stripContext: (text: string) => string
       if (m.type === "system") items.push({ kind: "note", id: m.uuid, text: "Earlier messages were compacted to make room." });
       else if (m.type === "assistant") items.push(...assistantItems(m.uuid, content, "done"));
       else if (m.type === "user") {
+        let from: string | undefined;
         const said = blocks(content)
           .filter((b) => b.type === "text")
-          .map((b) => (b.text === undefined ? undefined : stripContext(b.text)))
+          .map((b) => {
+            if (b.text === undefined) return undefined;
+            const r = readFrom(stripContext(b.text));
+            from ??= r.from;
+            return r.text;
+          })
           .filter(typed);
         const images = imagesOf(content);
-        if (said.length || images) items.push({ kind: "you", id: m.uuid, text: said.join("\n"), images });
-        items = withResults(items, content);
+        if (said.length || images) items.push({ kind: "you", id: m.uuid, text: said.join("\n"), images, ...(from ? { from } : {}) });
+        items = withResults(items, content, m.timestamp);
       }
     }
     return items.slice(-MAX_ITEMS);

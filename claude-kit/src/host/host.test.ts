@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readablePath } from "./blockfiles.js";
 import { ChatHost } from "./host.js";
-import { rowMaker } from "./items.js";
+import { fromWrapper, rowMaker } from "./items.js";
 import type { AgentSdk, CanUseToolLike, QueryLike, SdkMessage, SdkUserMessage, SlashCommandLike } from "./sdk.js";
 import type { ClaudeEvent } from "../types.js";
 import { httpHandler } from "../http/index.js";
@@ -188,6 +188,33 @@ describe("ChatHost", () => {
       const shown = host.chatState();
       assert.equal(shown.about, "Night Drive");
       assert.equal(shown.items[0].kind === "you" && shown.items[0].text, "when is it out?");
+    } finally {
+      done();
+    }
+  });
+
+  it("says where a message was sent from: a line Claude reads, a tag on its row, read back from the transcript", async () => {
+    const { host, queries, done } = setup();
+    try {
+      host.newChat({ context: "Release: Night Drive", text: "when is it out?", from: "phone · iPhone" });
+      await tick();
+      const said = queries.at(-1)!.got[0].message.content as string;
+      assert.match(said, /^<app-context>\nRelease: Night Drive\n<\/app-context>\n\n<sent-from>phone · iPhone<\/sent-from>\nwhen is it out\?$/);
+      const row = host.chatState().items[0];
+      assert.equal(row.kind === "you" && row.text, "when is it out?");
+      assert.equal(row.kind === "you" && row.from, "phone · iPhone");
+      const rows = rowMaker(() => undefined, (t) => t.replace(/^<app-context>[\s\S]*?<\/app-context>\s*/, ""), fromWrapper("sent-from").read);
+      const back = rows.fromTranscript([
+        { type: "user", uuid: "u1", message: { content: said } },
+        { type: "user", uuid: "u2", message: { content: "no tag on this one" } },
+      ] as never);
+      assert.deepEqual(
+        back.map((i) => (i.kind === "you" ? [i.text, i.from] : undefined)),
+        [
+          ["when is it out?", "phone · iPhone"],
+          ["no tag on this one", undefined],
+        ],
+      );
     } finally {
       done();
     }
@@ -520,6 +547,16 @@ describe("ChatHost blocks", () => {
     assert.deepEqual(blocks[1]?.answer, { value: { "Which fruit?": "Pear" }, said: "Which fruit? → Pear" });
     assert.equal(blocks[2]?.state, "expired");
     assert.equal(blocks[2]?.reason, "Ben stopped this turn.");
+  });
+
+  it("stamps a tool row read back with when its result came", () => {
+    const rows = rowMaker(() => undefined, (t) => t);
+    const items = rows.fromTranscript([
+      { type: "assistant", uuid: "u1", timestamp: "2026-11-20T18:40:00.000Z", message: { content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.ts" } }, { type: "tool_use", id: "t2", name: "Read", input: { file_path: "b.ts" } }] } },
+      { type: "user", uuid: "u2", timestamp: "2026-11-20T18:40:02.500Z", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "a" }] } },
+    ] as never);
+    const at = items.map((i) => (i.kind === "tool" ? i.at : undefined));
+    assert.deepEqual(at, ["2026-11-20T18:40:02.500Z", undefined]);
   });
 });
 

@@ -38,9 +38,28 @@ export type NewChatFile = { path: string; name?: string } | { data: string; name
 
 /** A row of a conversation. */
 export type ChatItem =
-  | { kind: "you"; id: string; text: string; images?: ChatImage[]; files?: ChatFile[] }
+  | {
+      kind: "you";
+      id: string;
+      text: string;
+      images?: ChatImage[];
+      files?: ChatFile[];
+      /** Where it was sent from, as the app named it ("desk · Zagreus", "phone · iPhone"): a tag under it, and a line Claude reads. */
+      from?: string;
+    }
   | { kind: "claude"; id: string; text: string }
-  | { kind: "tool"; id: string; name: string; detail?: string; state: "running" | "done" | "error"; result?: string; images?: ChatImage[]; block?: ChatBlock }
+  | {
+      kind: "tool";
+      id: string;
+      name: string;
+      detail?: string;
+      state: "running" | "done" | "error";
+      result?: string;
+      images?: ChatImage[];
+      block?: ChatBlock;
+      /** When its result came back (ISO): live, as it landed; read back, the transcript's time for it. */
+      at?: string;
+    }
   | { kind: "note"; id: string; text: string; error?: boolean };
 
 /** Something Claude wants to do that its mode doesn't allow by itself, waiting for an answer. */
@@ -190,7 +209,7 @@ export interface PastChat {
   chat?: string;
 }
 
-/** A new chat: everything optional. `context` goes to Claude ahead of the first message without being shown; `about` names what it's about. */
+/** A new chat: everything optional. `context` goes to Claude ahead of the first message without being shown; `about` names what it's about; `from`, where its first message was sent from. */
 export interface NewChatOptions {
   text?: string;
   model?: string;
@@ -198,6 +217,7 @@ export interface NewChatOptions {
   context?: string;
   about?: string;
   folder?: string;
+  from?: string;
 }
 
 /** What configure changes on one chat: only what's given. */

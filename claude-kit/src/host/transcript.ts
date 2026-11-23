@@ -19,6 +19,8 @@ export interface TranscriptEntry {
   isMeta?: boolean;
   isCompactSummary?: boolean;
   message?: unknown;
+  /** When Claude Code wrote it (ISO). */
+  timestamp?: string;
   /** A message sent while Claude was on a turn comes as one of these ("queued_command"). */
   attachment?: { type?: string; prompt?: unknown; source_uuid?: string };
 }

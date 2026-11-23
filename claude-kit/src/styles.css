@@ -244,12 +244,17 @@
 .ck-chatdot.is-alert { background: var(--ck-alert); }
 
 .ck-view { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* The conversation and, at its right edge, the app's rail (ClaudeUi.rail) when it draws one. */
+.ck-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.ck-body > .ck-log { min-width: 0; }
 /* The chat never scrolls sideways: everything in it fits its width (code and tables wrap; a carousel's own strip is the one thing that swipes). */
 .ck-log { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; user-select: text; }
 .ck-log > * { min-width: 0; max-width: 100%; }
 .ck-you { align-self: flex-end; max-width: 85%; padding: 9px 14px; border-radius: 18px 18px 6px 18px; background: var(--ck-surface-3); color: var(--ck-ink); font: 400 14px/20px var(--ck-font); white-space: pre-wrap; overflow-wrap: anywhere; }
 .ck-mine { align-self: flex-end; max-width: 85%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .ck-mine .ck-you { max-width: 100%; }
+/* Where a message was sent from (ChatItem from), under it. */
+.ck-mine .ck-from { margin-top: -3px; padding: 0 6px; color: var(--ck-ink-3); font: 400 11px/14px var(--ck-font); }
 
 .ck-prose { display: flex; flex-direction: column; gap: 8px; font: 400 14px/21px var(--ck-font); color: var(--ck-ink); overflow-wrap: anywhere; }
 .ck-prose p { margin: 0; white-space: pre-wrap; }
