@@ -13,6 +13,10 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 // Mac starting the PC's servers). It has a name and a key of its own, kept with the guests, and gets only the calls
 // the host's policy gives peers, so the owner's key never has to leave this computer, and a peer's new key cuts
 // that link alone without signing a phone out.
+//
+// Each session also keeps when it was last used (to within a few minutes), and the browser and address the host
+// saw then, so the host can list a person's phones and sign one out. One unused for idleDays (60) ends by itself.
+// A session saved before these existed starts its idle clock the first time it's read, so it keeps working.
 
 export type Role = "owner" | "guest" | "peer";
 
@@ -45,8 +49,27 @@ export interface Peer extends Person {
   key: string;
 }
 
-/** A person as listed for the host's settings: with how many phones (a peer: sessions) are signed in. */
+/** A person as listed for the host's settings: with how many phones (a peer: sessions) are signed in and used lately (recentDays). */
 export type Listed = (Person | Guest | Peer) & { sessions: number };
+
+/** What the host saw of a request, kept with its session: the browser's User-Agent and the address it came from. */
+export interface SessionMeta {
+  userAgent?: string;
+  ip?: string;
+}
+
+/** One phone's (or browser's) session, as the host lists it. Never its token or the token's hash. */
+export interface SessionInfo {
+  /** A short id made from the session's hash: what signOutSession takes. */
+  id: string;
+  /** Whose it is ("owner", "g_…", "p_…"). */
+  person: string;
+  signedInAt: string;
+  /** When it last made a request, to within a few minutes. Absent for one saved before this was kept and not used since. */
+  lastUsed?: string;
+  userAgent?: string;
+  ip?: string;
+}
 
 export interface SecretStore {
   get(name: string): string | null | undefined;
@@ -68,6 +91,10 @@ export interface PeopleOptions {
   maxSessions?: number;
   /** How long a session lasts from sign-in. Default 365 days (the cookie's life). */
   sessionDays?: number;
+  /** A session unused this long ends. Default 60 days. */
+  idleDays?: number;
+  /** list()'s count takes the sessions used within this many days. Default 30. */
+  recentDays?: number;
   now?: () => number;
 }
 
@@ -87,13 +114,17 @@ export interface People {
   remove(id: string): boolean;
   /** A guest's or a peer's new key: the old one stops working and their sessions end. */
   newKey(id: string): Guest | Peer;
-  /** A key typed or carried by a link: a new session for whoever it belongs to. Undefined for a wrong key. */
-  signIn(key: string): { token: string; person: Person } | undefined;
-  /** Who a session token (a cookie) belongs to, or a key given as a bearer token (a script). */
-  personFor(token: string | undefined): Person | undefined;
+  /** A key typed or carried by a link: a new session for whoever it belongs to, with what the host saw of the request. Undefined for a wrong key. */
+  signIn(key: string, meta?: SessionMeta): { token: string; person: Person } | undefined;
+  /** Who a session token (a cookie) belongs to, or a key given as a bearer token (a script). A session's use is noted, with `meta`. */
+  personFor(token: string | undefined, meta?: SessionMeta): Person | undefined;
   signOut(token: string): boolean;
   /** Signs out one person's phones, or everyone's. */
   endSessions(personId?: string): void;
+  /** The live sessions, one person's or everyone's, the most recently used first. */
+  sessions(personId?: string): SessionInfo[];
+  /** Signs out one session by its id (sessions()): what was ended, or undefined when there's no such session. */
+  signOutSession(id: string): SessionInfo | undefined;
 }
 
 const hashOf = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -121,13 +152,25 @@ interface Session {
   hash: string;
   at: number;
   person: string;
+  /** When it last made a request (rounded to a few minutes). */
+  used?: number;
+  /** A session saved before `used` was kept: when its idle clock started (the first time this read it). */
+  from?: number;
+  ua?: string;
+  ip?: string;
 }
+
+/** A session's id for the host's list: from its hash, so nothing new is stored and the hash itself isn't shown. */
+const sessionId = (hash: string) => createHash("sha256").update(`session:${hash}`).digest("base64url").slice(0, 16);
+const cleanMeta = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
 
 export function createPeople(options: PeopleOptions): People {
   const peopleName = options.peopleName ?? "remotePeople";
   const sessionsName = options.sessionsName ?? "remoteSessions";
   const maxSessions = options.maxSessions ?? 12;
   const life = (options.sessionDays ?? 365) * 86_400_000;
+  const idle = (options.idleDays ?? 60) * 86_400_000;
+  const recent = (options.recentDays ?? 30) * 86_400_000;
   const now = options.now ?? (() => Date.now());
   const ownerProfileName = options.ownerProfileName ?? "remoteOwner";
 
@@ -168,23 +211,78 @@ export function createPeople(options: PeopleOptions): People {
   const saveKeyed = () => options.store.set(peopleName, JSON.stringify(readKeyed()));
   const readGuests = () => readKeyed().filter((g): g is Guest => g.role === "guest");
 
+  /** When a session was last known to be in use, for its idle clock. */
+  const usedAt = (s: Session) => s.used ?? s.from ?? s.at;
+  const live = (s: Session, t = now()) => t - s.at < life && t - usedAt(s) < idle;
+
   function readSessions(): Session[] {
     if (sessions) return sessions;
     sessions = [];
+    let upgraded = false;
     try {
       const raw = JSON.parse(options.store.get(sessionsName) ?? "[]") as unknown;
       for (const s of Array.isArray(raw) ? raw : []) {
         if (!Array.isArray(s) || typeof s[0] !== "string" || typeof s[1] !== "number") continue;
-        if (now() - s[1] >= life) continue;
-        sessions.push({ hash: s[0], at: s[1], person: typeof s[2] === "string" ? s[2] : "owner" });
+        const one: Session = { hash: s[0], at: s[1], person: typeof s[2] === "string" ? s[2] : "owner" };
+        if (typeof s[3] === "number") one.used = s[3];
+        if (typeof s[4] === "string") one.ua = s[4];
+        if (typeof s[5] === "string") one.ip = s[5];
+        if (typeof s[6] === "number") one.from = s[6];
+        // Saved before sessions kept their use: its idle clock starts now, so a phone signed in long ago stays.
+        if (one.used === undefined && one.from === undefined) {
+          one.from = now();
+          upgraded = true;
+        }
+        if (!live(one)) continue;
+        sessions.push(one);
       }
     } catch {
       /* unreadable: every phone signs in again */
     }
+    if (upgraded) saveSessions();
     return sessions;
   }
-  // The owner's are written without a person, as before, so an older host reading them still knows them.
-  const saveSessions = () => options.store.set(sessionsName, JSON.stringify(readSessions().map((s) => (s.person === "owner" ? [s.hash, s.at] : [s.hash, s.at, s.person]))));
+  // [hash, at, person, used, userAgent, ip, from], trailing blanks left off. The owner's person is left empty, as
+  // before, so an older host reading them still knows them; an older host reads the first three and ignores the rest.
+  const row = (s: Session) => {
+    const r: unknown[] = [s.hash, s.at, s.person === "owner" ? null : s.person, s.used ?? null, s.ua ?? null, s.ip ?? null, s.from ?? null];
+    while (r.length > 2 && r[r.length - 1] === null) r.pop();
+    return r;
+  };
+  let sessionsWrite = 0;
+  const saveSessions = () => {
+    sessionsWrite = now();
+    options.store.set(sessionsName, JSON.stringify(readSessions().map(row)));
+  };
+  /** Ends the sessions past their life or idle too long; true when any went. */
+  function prune(): boolean {
+    const all = readSessions();
+    const t = now();
+    const kept = all.filter((s) => live(s, t));
+    if (kept.length === all.length) return false;
+    sessions = kept;
+    return true;
+  }
+  const infoOf = (s: Session): SessionInfo => ({
+    id: sessionId(s.hash),
+    person: s.person,
+    signedInAt: new Date(s.at).toISOString(),
+    ...(s.used !== undefined ? { lastUsed: new Date(s.used).toISOString() } : {}),
+    ...(s.ua ? { userAgent: s.ua } : {}),
+    ...(s.ip ? { ip: s.ip } : {}),
+  });
+  /** A session used now: noted every few minutes, written at most once a minute across everyone, like lastSeen. */
+  function touch(s: Session, meta?: SessionMeta) {
+    const t = now();
+    const ua = cleanMeta(meta?.userAgent, 300);
+    const ip = cleanMeta(meta?.ip, 64);
+    if (s.used !== undefined && t - s.used < 5 * 60_000 && (!ip || ip === s.ip) && (!ua || ua === s.ua)) return;
+    s.used = t;
+    delete s.from;
+    if (ua) s.ua = ua;
+    if (ip) s.ip = ip;
+    if (t - sessionsWrite > 60_000) saveSessions();
+  }
 
   const find = (id: string) => readKeyed().find((g) => g.id === id);
   const need = (id: string) => {
@@ -194,13 +292,18 @@ export function createPeople(options: PeopleOptions): People {
   };
   const byId = (id: string): Person | Guest | Peer | undefined => (id === "owner" ? ownerPerson() : find(id));
 
-  function newSession(person: string): string {
+  function newSession(person: string, meta?: SessionMeta): string {
     const token = randomBytes(24).toString("base64url");
+    prune();
     const all = readSessions();
-    all.push({ hash: hashOf(token), at: now(), person });
-    // Each person keeps their newest few: a phone signed in a dozen sign-ins ago signs in again.
+    const t = now();
+    const ua = cleanMeta(meta?.userAgent, 300);
+    const ip = cleanMeta(meta?.ip, 64);
+    all.push({ hash: hashOf(token), at: t, person, used: t, ...(ua ? { ua } : {}), ...(ip ? { ip } : {}) });
+    // Each person keeps their few most recently used: a phone not used for a dozen sign-ins signs in again.
     const theirs = all.filter((s) => s.person === person);
-    for (const old of theirs.slice(0, Math.max(0, theirs.length - maxSessions))) all.splice(all.indexOf(old), 1);
+    const stale = [...theirs].sort((a, b) => usedAt(a) - usedAt(b)).slice(0, Math.max(0, theirs.length - maxSessions));
+    for (const old of stale) all.splice(all.indexOf(old), 1);
     saveSessions();
     return token;
   }
@@ -221,8 +324,10 @@ export function createPeople(options: PeopleOptions): People {
   return {
     owner: ownerPerson,
     list() {
+      // Only phones still signed in and used lately: not every token ever issued.
       const counts = new Map<string, number>();
-      for (const s of readSessions()) counts.set(s.person, (counts.get(s.person) ?? 0) + 1);
+      const t = now();
+      for (const s of readSessions()) if (live(s, t) && s.used !== undefined && t - s.used < recent) counts.set(s.person, (counts.get(s.person) ?? 0) + 1);
       return [{ ...ownerPerson(), sessions: counts.get("owner") ?? 0 }, ...readKeyed().map((g) => ({ ...g, sessions: counts.get(g.id) ?? 0 }))];
     },
     profiles() {
@@ -287,23 +392,29 @@ export function createPeople(options: PeopleOptions): People {
       this.endSessions(id);
       return g;
     },
-    signIn(key) {
+    signIn(key, meta) {
       const k = key.trim();
       if (!k) return undefined;
-      if (sameSecret(k, options.ownerKey())) return { token: newSession("owner"), person: ownerPerson() };
+      if (sameSecret(k, options.ownerKey())) return { token: newSession("owner", meta), person: ownerPerson() };
       const g = readKeyed().find((x) => sameSecret(k, x.key));
       if (!g) return undefined;
       seen(g);
-      return { token: newSession(g.id), person: g };
+      return { token: newSession(g.id, meta), person: g };
     },
-    personFor(token) {
+    personFor(token, meta) {
       if (!token) return undefined;
       const h = hashOf(token);
       const s = readSessions().find((x) => x.hash === h);
       if (s) {
-        if (now() - s.at >= life) return undefined;
+        if (!live(s)) {
+          // Past its life, or unused too long: it ends here.
+          if (prune()) saveSessions();
+          return undefined;
+        }
         const p = byId(s.person);
-        if (p && p.role !== "owner") seen(p as Guest | Peer);
+        if (!p) return undefined;
+        touch(s, meta);
+        if (p.role !== "owner") seen(p as Guest | Peer);
         return p;
       }
       // A key itself: a script's or a peer's bearer token, or a cookie from before sessions (the owner's key).
@@ -323,6 +434,21 @@ export function createPeople(options: PeopleOptions): People {
     endSessions(personId) {
       sessions = personId ? readSessions().filter((s) => s.person !== personId) : [];
       saveSessions();
+    },
+    sessions(personId) {
+      if (prune()) saveSessions();
+      return readSessions()
+        .filter((s) => !personId || s.person === personId)
+        .sort((a, b) => usedAt(b) - usedAt(a))
+        .map(infoOf);
+    },
+    signOutSession(id) {
+      const all = readSessions();
+      const i = all.findIndex((s) => sessionId(s.hash) === id);
+      if (i < 0) return undefined;
+      const [gone] = all.splice(i, 1);
+      saveSessions();
+      return infoOf(gone);
     },
   };
 }

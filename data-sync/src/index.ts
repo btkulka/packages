@@ -26,7 +26,7 @@ export {
 export { defaultSyncDir, listTailnets, tailnetFor, tailnetsFile, type TailnetConfig } from "./tailnets.js";
 export { hasHistory, historyFile, readHistory, recordHistory, type HistoryEntry, type HistoryEvent } from "./history.js";
 export { mirrorFolder, type MirrorOptions, type MirrorResult } from "./mirror.js";
-export { parseTailscaleStatus, runsServers, tailnet, tailscaleCli, type Peer, type Tailnet } from "./tailnet.js";
+export { ownPeer, parseTailscaleStatus, runsServers, tailnet, tailscaleCli, type Peer, type Tailnet } from "./tailnet.js";
 export {
   findRunning,
   HELLO_PATH,

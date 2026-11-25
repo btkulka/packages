@@ -1,5 +1,5 @@
 // Retries: a 429 waits out Retry-After (capped), a 5xx, a timeout or a network error backs off
-// exponentially, and an abort is never retried.
+// exponentially with jitter, and an abort is never retried.
 
 import { HttpError, abortedError } from "./errors.js";
 import { hostOf, send, type FetchLike, type FetchLikeInit, type FetchLikeResponse, type SendOptions, type SendResult } from "./fetch.js";
@@ -13,6 +13,13 @@ export interface RetryOptions {
   maxDelayMs?: number;
   /** Ceiling on a 429's Retry-After wait. Default 60 000. */
   maxRetryAfterMs?: number;
+  /**
+   * How much of a backoff wait is left to chance, 0 to 1: the wait falls between (1 - jitter) and 1 times the backoff,
+   * so clients that failed together don't all come back at once. Default 0.5. A 429's Retry-After is never shortened.
+   */
+  jitter?: number;
+  /** The chance, from 0 up to 1. Default Math.random; a test gives its own. */
+  random?: () => number;
   /** Which failures to retry. Default `isRetryable`. An abort is never retried, whatever this says. */
   retryable?: (err: unknown) => boolean;
   /** Stops the loop: before the next attempt, and during a wait. */
@@ -27,12 +34,18 @@ export function isRetryable(err: unknown): boolean {
   return err.status === 429 || err.status >= 500;
 }
 
-/** How long to wait before retry number `attempt + 1`: a 429's Retry-After when it sent one, else the backoff. */
+/**
+ * How long to wait before retry number `attempt + 1`: a 429's Retry-After when it sent one, else the backoff
+ * (baseDelayMs doubling up to maxDelayMs) less a random part of it (jitter).
+ */
 export function retryDelay(err: unknown, attempt: number, options: RetryOptions = {}): number {
   if (err instanceof HttpError && err.status === 429 && err.retryAfterMs != null) {
     return Math.min(Math.max(0, err.retryAfterMs), options.maxRetryAfterMs ?? 60_000);
   }
-  return Math.min((options.baseDelayMs ?? 1_000) * 2 ** attempt, options.maxDelayMs ?? 30_000);
+  const full = Math.min((options.baseDelayMs ?? 1_000) * 2 ** Math.max(0, attempt), options.maxDelayMs ?? 30_000);
+  const jitter = Math.min(1, Math.max(0, options.jitter ?? 0.5));
+  const chance = Math.min(1, Math.max(0, (options.random ?? Math.random)()));
+  return Math.round(full * (1 - jitter * chance));
 }
 
 /**

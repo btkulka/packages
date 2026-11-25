@@ -39,16 +39,17 @@ test("a guest gets a key of their own, and signs in as themselves with only thei
   assert.throws(() => people.add({ name: "  ", tools: [] }), /needs a name/);
 });
 
-test("sessions are stored as hashes; the owner's in the old shape", () => {
+test("sessions are stored as hashes; the owner's without a person, as in the old shape", () => {
   const store = memory();
   const people = createPeople({ store, ownerKey: () => OWNER_KEY });
   const o = people.signIn(OWNER_KEY)!;
   const g = people.add({ name: "K", tools: [] });
-  const gs = people.signIn(g.key)!;
+  const gs = people.signIn(g.key, { userAgent: "Mozilla/5.0 (iPhone)", ip: "100.64.0.9" })!;
   const raw = JSON.parse(store.data.remoteSessions) as unknown[][];
   const hash = (t: string) => createHash("sha256").update(t).digest("hex");
-  assert.deepEqual(raw[0], [hash(o.token), raw[0][1]]);
-  assert.deepEqual(raw[1], [hash(gs.token), raw[1][1], g.id]);
+  // [hash, at, person, used, userAgent, ip]: an older host reads the first three as before.
+  assert.deepEqual(raw[0], [hash(o.token), raw[0][1], null, raw[0][1]]);
+  assert.deepEqual(raw[1], [hash(gs.token), raw[1][1], g.id, raw[1][1], "Mozilla/5.0 (iPhone)", "100.64.0.9"]);
   assert.ok(!store.data.remoteSessions.includes(o.token));
 });
 
@@ -101,6 +102,91 @@ test("each person keeps their newest sessions; old ones expire", () => {
   assert.equal(people.personFor(ks.token)?.id, k.id, "another person's session isn't touched");
   t += 86_400_000 + 1;
   assert.equal(people.personFor(c.token), undefined, "past its life");
+});
+
+test("a session unused for idleDays ends; using it keeps it going", () => {
+  let t = 1_000_000;
+  const store = memory();
+  const people = createPeople({ store, ownerKey: () => OWNER_KEY, idleDays: 2, now: () => t });
+  const a = people.signIn(OWNER_KEY)!;
+  const b = people.signIn(OWNER_KEY)!;
+  t += 1.5 * 86_400_000;
+  assert.equal(people.personFor(a.token)?.role, "owner", "used within two days");
+  t += 1.5 * 86_400_000;
+  assert.equal(people.personFor(a.token)?.role, "owner", "its last use was a day and a half ago");
+  assert.equal(people.personFor(b.token), undefined, "three days without a use");
+  assert.equal(people.sessions().length, 1);
+  // The use is kept across a restart (written at most once a minute).
+  const again = createPeople({ store, ownerKey: () => OWNER_KEY, idleDays: 2, now: () => t + 1.9 * 86_400_000 });
+  assert.equal(again.personFor(a.token)?.role, "owner");
+});
+
+test("sessions saved in the old shape keep working, and start their idle clock when first read", () => {
+  let t = Date.now();
+  const hash = (x: string) => createHash("sha256").update(x).digest("hex");
+  // Signed in 300 days ago, never noted as used: [hash, at] and [hash, at, person].
+  const store = memory({ remoteSessions: JSON.stringify([[hash("old-owner"), t - 300 * 86_400_000], [hash("old-other"), t - 300 * 86_400_000]]) });
+  const people = createPeople({ store, ownerKey: () => OWNER_KEY, now: () => t });
+  assert.equal(people.personFor("old-owner")?.role, "owner");
+  // The other one's use isn't known: listed without a last use, and not counted as a phone in use.
+  const listed = people.sessions();
+  assert.equal(listed.length, 2);
+  assert.equal(listed.filter((s) => s.lastUsed).length, 1);
+  assert.equal(people.list()[0].sessions, 1);
+  // Its clock started when it was read: sixty days on without a use it's gone; the one in use stays.
+  t += 59 * 86_400_000;
+  assert.equal(people.personFor("old-owner")?.role, "owner");
+  t += 2 * 86_400_000;
+  assert.equal(people.personFor("old-other"), undefined);
+  assert.equal(people.personFor("old-owner")?.role, "owner");
+});
+
+test("each phone is listed with its browser, address and last use, and signs out alone", () => {
+  let t = 5_000_000;
+  const people = createPeople({ store: memory(), ownerKey: () => OWNER_KEY, now: () => t });
+  const iphone = people.signIn(OWNER_KEY, { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)", ip: "100.64.0.2" })!;
+  t += 60_000;
+  const laptop = people.signIn(OWNER_KEY, { userAgent: "Mozilla/5.0 (Macintosh)", ip: "192.168.1.20" })!;
+  const k = people.add({ name: "K", tools: [] });
+  const ks = people.signIn(k.key, { userAgent: "Mozilla/5.0 (Linux; Android 15)" })!;
+  t += 10 * 60_000;
+  // A use moves it to the top and notes where it came from now.
+  people.personFor(iphone.token, { ip: "100.64.0.3" });
+  const mine = people.sessions("owner");
+  assert.deepEqual(
+    mine.map((s) => [s.userAgent, s.ip]),
+    [
+      ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)", "100.64.0.3"],
+      ["Mozilla/5.0 (Macintosh)", "192.168.1.20"],
+    ],
+  );
+  assert.equal(mine[0].lastUsed, new Date(t).toISOString());
+  assert.equal(mine[1].signedInAt, new Date(5_060_000).toISOString());
+  assert.ok(mine.every((s) => /^[\w-]{16}$/.test(s.id)));
+  assert.ok(!JSON.stringify(people.sessions()).includes(iphone.token), "never a token");
+  assert.equal(people.sessions().length, 3);
+
+  // Signing one out ends it alone.
+  const gone = people.signOutSession(mine[1].id)!;
+  assert.equal(gone.person, "owner");
+  assert.equal(people.personFor(laptop.token), undefined);
+  assert.equal(people.personFor(iphone.token)?.role, "owner");
+  assert.equal(people.personFor(ks.token)?.id, k.id);
+  assert.equal(people.signOutSession(mine[1].id), undefined, "already gone");
+  assert.equal(people.signOutSession("nope"), undefined);
+});
+
+test("the count is phones used lately, not every token ever issued", () => {
+  let t = 1_000_000;
+  const people = createPeople({ store: memory(), ownerKey: () => OWNER_KEY, recentDays: 7, now: () => t });
+  const a = people.signIn(OWNER_KEY)!;
+  people.signIn(OWNER_KEY);
+  people.signIn(OWNER_KEY);
+  assert.equal(people.list()[0].sessions, 3);
+  t += 8 * 86_400_000;
+  people.personFor(a.token);
+  assert.equal(people.list()[0].sessions, 1, "two weren't used in the last week");
+  assert.equal(people.sessions("owner").length, 3, "still signed in, and listed to sign out");
 });
 
 test("list shows the owner first, guests with their phones, and update changes name and tools", () => {

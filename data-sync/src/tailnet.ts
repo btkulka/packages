@@ -9,11 +9,19 @@ export interface Peer {
   ip: string;
   os?: string;
   online: boolean;
+  /** The Tailscale user it's signed in as (a tagged node has the tagged-devices user). */
+  userId?: number;
+  /** Its ACL tags: a tagged node belongs to the tailnet, not to a person. */
+  tags?: string[];
+  /** It's in the netmap because this machine was shared with its owner (another tailnet's user), not because it's ours. */
+  sharee?: boolean;
 }
 
 export interface Tailnet {
   self: Peer | null;
   peers: Peer[];
+  /** The Tailscale user this machine is signed in as. */
+  userId?: number;
   /** Tailscale's backend state: "Running", "NeedsLogin", "Stopped", "Starting", "NoState"; absent when the CLI didn't answer. */
   state?: string;
   /** The tailnet's name, and the account this machine is signed in as. */
@@ -36,32 +44,46 @@ interface RawNode {
   TailscaleIPs?: string[];
   OS?: string;
   Online?: boolean;
+  UserID?: number;
+  Tags?: string[] | null;
+  ShareeNode?: boolean;
 }
 
 const toPeer = (n: RawNode, online: boolean): Peer | null => {
   const ips = n.TailscaleIPs ?? [];
   const ip = ips.find((a) => !a.includes(":")) ?? ips[0];
   if (!ip) return null;
-  return { name: (n.HostName || n.DNSName?.split(".")[0] || ip).toLowerCase(), ip, os: n.OS, online };
+  const tags = Array.isArray(n.Tags) ? n.Tags.filter((t) => typeof t === "string") : [];
+  return {
+    name: (n.HostName || n.DNSName?.split(".")[0] || ip).toLowerCase(),
+    ip,
+    os: n.OS,
+    online,
+    ...(typeof n.UserID === "number" ? { userId: n.UserID } : {}),
+    ...(tags.length ? { tags } : {}),
+    ...(n.ShareeNode ? { sharee: true } : {}),
+  };
 };
 
 /** Parse `tailscale status --json`. */
 export function parseTailscaleStatus(json: string): Tailnet {
   const s = JSON.parse(json) as {
-    Self?: RawNode & { UserID?: number };
+    Self?: RawNode;
     Peer?: Record<string, RawNode>;
     BackendState?: string;
     AuthURL?: string;
     CurrentTailnet?: { Name?: string } | null;
     User?: Record<string, { LoginName?: string }>;
   };
-  const self = s.Self ? toPeer(s.Self, true) : null;
+  // This machine's user is the tailnet's userId; its own entry stays as it was.
+  const self = s.Self ? toPeer({ HostName: s.Self.HostName, DNSName: s.Self.DNSName, TailscaleIPs: s.Self.TailscaleIPs, OS: s.Self.OS }, true) : null;
   const peers = Object.values(s.Peer ?? {})
     .map((p) => toPeer(p, Boolean(p.Online)))
     .filter((p): p is Peer => p !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
   const user = s.Self?.UserID !== undefined ? s.User?.[String(s.Self.UserID)]?.LoginName : undefined;
-  return { self, peers, state: s.BackendState, name: s.CurrentTailnet?.Name || undefined, user, authUrl: s.AuthURL || undefined };
+  const userId = typeof s.Self?.UserID === "number" ? s.Self.UserID : undefined;
+  return { self, peers, state: s.BackendState, name: s.CurrentTailnet?.Name || undefined, user, authUrl: s.AuthURL || undefined, ...(userId !== undefined ? { userId } : {}) };
 }
 
 /**
@@ -84,3 +106,11 @@ export function tailnet(options: { cli?: string; socket?: string; timeoutMs?: nu
 
 /** Phones and tablets don't run Ben's app servers; skip probing them. */
 export const runsServers = (p: Peer) => !/^(ios|android)$/i.test(p.os ?? "");
+
+/**
+ * Whether a peer is one of this machine's owner's own: signed in to Tailscale as the same user, not a tagged node
+ * and not in the netmap through a share. A guest invited to the tailnet, a node shared in from another tailnet and
+ * a tagged server are all reachable, but none of them is the owner's machine. Unknown users never match.
+ */
+export const ownPeer = (t: Pick<Tailnet, "userId" | "self">, p: Peer): boolean =>
+  t.userId !== undefined && p.userId === t.userId && !p.tags?.length && !p.sharee && p.ip !== t.self?.ip;
