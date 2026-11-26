@@ -4,9 +4,11 @@ Spotify Web API over the client-credentials flow (public data, no user login), w
 
 - a token that is cached in memory, optionally persisted through a store the app hands in (album-choice-ranker uses localStorage), refreshed a minute before it expires, and requested once however many calls are waiting on it;
 - a 401 refreshes the token and retries once; a 429 waits out `Retry-After` (capped at 60 s, up to 5 times);
-- search, one artist, albums in batches of 20, every track of a public playlist, and URL/URI/ID parsing.
+- search, one artist, albums in batches of 20, every track of a public playlist, and URL/URI/ID parsing;
+- search by kind (tracks, albums, artists, playlists, podcasts, episodes) and lookups by ID, every result flattened into one `SpotifyItem` shape;
+- **a search box** (`@btkulka/spotify-client/search`): type, filter by kind with chips, pick, so nobody pastes links. Plain DOM, styled by `search.css`.
 
-It runs in Node and in the browser: global `fetch` (or one you pass in), no `node:*` imports, no `Buffer` (base64 is done by hand). A test checks the built files for that. No runtime dependencies.
+It runs in Node and in the browser: global `fetch` (or one you pass in), no `node:*` imports, no `Buffer` (base64 is done by hand). A test checks the built files for that. No runtime dependencies. The search box needs a DOM; nothing in the main entry touches one.
 
 ```json
 "dependencies": { "@btkulka/spotify-client": "file:../packages/spotify-client" }
@@ -25,8 +27,11 @@ await spotify.getAlbums(ids);                        // raw album objects, 20 pe
 await spotify.getPlaylistTracks(url, (loaded, total) => {}); // { playlist: SpotifyPlaylistInfo, tracks: SpotifyTrack[] }
 await spotify.testConnection();                      // true when the credentials get a token; never throws
 await spotify.get("/artists/x/top-tracks", { market: "US" }); // any other GET, same token/401/429 handling
+await spotify.searchItems("daft punk", { types: ["playlist", "album"], limit: 10, offset: 0 }); // { playlist: { items: SpotifyItem[], total, offset, hasMore }, album: {…} }
+await spotify.getItem("album", "4m2880jivSbbyEGAKfITCa");  // SpotifyItem, or null when Spotify doesn't know it
 
 parseSpotifyId("https://open.spotify.com/intl-de/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x", "playlist"); // "37i9dQZF1DXcBWIGoYBM5M"
+parseSpotifyLink("spotify:album:4m2880jivSbbyEGAKfITCa");                 // { type: "album", id: "4m2880jivSbbyEGAKfITCa" }
 ```
 
 `createSpotifyClient(options)`
@@ -42,13 +47,75 @@ parseSpotifyId("https://open.spotify.com/intl-de/playlist/37i9dQZF1DXcBWIGoYBM5M
 | `maxRetryAfterSeconds` | 60 | Ceiling on one wait. |
 | `pageDelayMs` | 100 | Pause between playlist pages. |
 
-Client methods: `getToken(): Promise<SpotifyToken>` (`{ accessToken, expiresAt }`), `getAccessToken(): Promise<string>`, `clearToken()`, `testConnection()`, `get<T>(path, query?)`, `search(q, { type?, limit? })`, `getArtist(id)`, `getAlbums(ids)`, `getPlaylistTracks(urlOrUriOrId, onProgress?)`.
+Client methods: `getToken(): Promise<SpotifyToken>` (`{ accessToken, expiresAt }`), `getAccessToken(): Promise<string>`, `clearToken()`, `testConnection()`, `get<T>(path, query?)`, `search(q, { type?, limit? })`, `searchItems(q, { types?, limit?, offset?, market? })`, `getItem(type, id, { market? })`, `getArtist(id)`, `getAlbums(ids)`, `getPlaylistTracks(urlOrUriOrId, onProgress?)`.
 
-Other exports: `parseSpotifyId(input, kind)` (`kind`: track, album, artist, playlist, show, episode; accepts `open.spotify.com` links including `/intl-xx/` and `/embed/`, `spotify:kind:id` URIs, and bare 22-character IDs; otherwise null), `toTrack` / `toArtist` (the flatteners `search` uses), `SPOTIFY_TOKEN_URL`, `SPOTIFY_API_URL`, and the types `SpotifyTrack`, `SpotifyArtist`, `SpotifySearchResult`, `SpotifyPlaylistInfo`, `SpotifyArtistObject`, `SpotifyAlbumObject`, `SpotifyTrackObject`, `SpotifyImageObject`, `SpotifyToken`, `SpotifyTokenStore`, `SpotifyCredentials`, `SpotifyClientOptions`, `SpotifyClient`, `FetchLike`.
+Other exports: `parseSpotifyId(input, kind)` (`kind`: track, album, artist, playlist, show, episode; accepts `open.spotify.com` links including `/intl-xx/` and `/embed/`, `spotify:kind:id` URIs, and bare 22-character IDs; otherwise null), `parseSpotifyLink(input)` (the kind and ID from a link or URI; a bare ID gives null), `toTrack` / `toArtist` (the flatteners `search` uses), `toItem(type, raw)` (the one `searchItems` and `getItem` use), `SPOTIFY_SEARCH_TYPES`, `SPOTIFY_TYPE_LABELS` (`{ show: { one: "Podcast", many: "Podcasts" }, … }`), `SPOTIFY_TOKEN_URL`, `SPOTIFY_API_URL`, and the types `SpotifyItem`, `SpotifyItemPage`, `SpotifyItemSearchResult`, `SpotifySearchItemsOptions`, `SpotifySearchType`, `SpotifyTrack`, `SpotifyArtist`, `SpotifySearchResult`, `SpotifyPlaylistInfo`, `SpotifyArtistObject`, `SpotifyAlbumObject`, `SpotifyTrackObject`, `SpotifyImageObject`, `SpotifyToken`, `SpotifyTokenStore`, `SpotifyCredentials`, `SpotifyClientOptions`, `SpotifyClient`, `FetchLike`.
 
 **Errors.** Everything throws `SpotifyApiError` with `status` (HTTP status; 0 for timeouts, network errors and missing credentials) and `body` (the parsed error JSON, or the text). Messages say what Spotify said: `Spotify auth failed (401): invalid_client: Invalid client`, `Spotify API error (404): Non existing id`, `Spotify request to api.spotify.com timed out after 15000ms`. `getPlaylistTracks` turns 404 into "Playlist not found. Make sure the playlist exists and is public." and 403 into "This playlist is private. Only public playlists are supported." An unparseable playlist link throws a plain `Error` before any request.
 
 **Shapes.** `search` and `getPlaylistTracks` return candybar-manager's flattened `SpotifyTrack` / `SpotifyArtist` (snake_case: `album_image_url`, `release_year`, `external_url`…). `getArtist` and `getAlbums` return Spotify's own objects. Playlist items whose `track` is null are skipped; local files come through with `id: ""`.
+
+## Search by kind
+
+`searchItems(query, options)` is `GET /search` for any of the six kinds (Spotify calls podcasts "shows"), one page per kind asked for, each result flattened into a `SpotifyItem`:
+
+| Field | |
+|---|---|
+| `type`, `id`, `uri`, `url`, `name` | always |
+| `subtitle` | the line under the name: "Daft Punk, Pharrell Williams · Random Access Memories" (track), "Daft Punk" (album), "12M followers" (artist), "By Red Franzen" (playlist), the publisher (podcast), "17 Mar 2026" (episode) |
+| `meta` | short text for the end of a row: "4:08", "Single · 2013", "50 tracks", "2 episodes", "34 min"; empty when there's nothing |
+| `imageUrl`, `coverUrl` | the smallest image at least 64 px wide (thumbnails) and the largest |
+| per kind | `artists`, `album`, `albumType`, `releaseDate`, `durationMs`, `trackCount`, `owner`, `followers`, `genres`, `publisher`, `episodeCount`, `explicit`, `popularity` where Spotify gives them |
+
+Options: `types` (default all six), `limit` per kind (1–50, default 10), `offset` (Spotify stops at 1000), `market`. A page is `{ items, total, offset, hasMore }`. Spotify pads some pages (playlists especially) with nulls; they're dropped, so a page can be shorter than `limit` and still have more. A blank query answers `{}` without a request. `getItem(type, id)` fetches one by ID (a playlist with only the fields an item shows, not its first 100 tracks) and gives null for an ID Spotify doesn't know.
+
+## The search box
+
+```ts
+import { mountSpotifySearch } from "@btkulka/spotify-client/search";
+import "@btkulka/spotify-client/search.css";
+
+const box = mountSpotifySearch(document.getElementById("spotify")!, {
+  source: spotify,                          // a SpotifyClient, or { searchItems, getItem? } that asks your backend
+  types: ["album", "playlist"],             // the kinds this box offers; default all six
+  onSelect: (item) => save(item.url),       // a SpotifyItem
+});
+```
+
+It draws a search field, a row of chips (All and one per kind; none when the box offers one kind) and a results list that opens under them: under All, a few of each kind with See all; with one kind, a page with More. Arrow keys move through the results, Enter picks, Escape closes. A pasted Spotify link of a kind it offers picks that item straight away (through `source.getItem`; without one, a bare item with no name); a link of another kind says what it takes. Results are cached per query and chip, so switching chips back is instant. The list ends with "Results from Spotify" and the logo, as Spotify's design guidelines ask (`attribution: false` drops it).
+
+| Option | Default | |
+|---|---|---|
+| `source` | required | `searchItems(query, { types, limit, offset, market })`, optionally `getItem(type, id)`. A SpotifyClient fits as it is. An app whose key lives in a backend (an Electron main process) passes an object that calls it. |
+| `onSelect(item)` | required | What was picked. |
+| `types` | all six | The kinds offered: the box's filter. |
+| `type` | `"all"` | The chip chosen at the start. |
+| `input` | none | Use a field the page already has. The chips and list go in the container (put it just under the field); the field keeps its own look and listeners, and the box only takes Enter, Escape and the arrows while its list is open. |
+| `ignore(text)` | none | Text the box leaves alone, e.g. links of another service the page reads itself. |
+| `fillOnSelect` | true for its own field, false for one passed in | Put the picked item's name in the field. |
+| `describeError(err)` | the error's message | A sentence, or `{ message, action: { label, run } }` for a button (Connect Spotify). |
+| `placeholder`, `label` | "Search Spotify" / "Search Spotify playlists" | The drawn field's placeholder and accessible name. |
+| `limit`, `previewLimit` | 10, 4 | Results per page with one kind; per kind under All. |
+| `market`, `debounceMs`, `minLength`, `attribution` | none, 250, 2, true | |
+
+It returns `{ element, input, type, setTypes(types), setType(type), search(text), clear(), close(), focus(), destroy() }`.
+
+**Styling.** `search.css` reads `--sps-*` variables, set anywhere above the box (on `:root` to match the app): `--sps-font`, `--sps-field`, `--sps-bg` (the list), `--sps-hover`, `--sps-line`, `--sps-ink`, `--sps-ink-2`, `--sps-ink-3`, `--sps-accent`, `--sps-accent-ink`, `--sps-accent-soft`, `--sps-danger`, `--sps-radius`, `--sps-radius-panel`, `--sps-shadow`, `--sps-thumb`, `--sps-panel-max-height`. Unset, they fall back to ui-kit's `--ui-*` tokens, then to a dark look with Spotify green. Track Lab maps them to its own tokens in `styles.css`.
+
+**React.** Mount it from an effect:
+
+```tsx
+const ref = useRef<HTMLDivElement>(null);
+useEffect(() => {
+  const box = mountSpotifySearch(ref.current!, { source: spotify, types: ["album"], onSelect });
+  return () => box.destroy();
+}, []);
+return <div ref={ref} />;
+```
+
+**TypeScript with `moduleResolution: "node"`** (which ignores `exports`): `typesVersions` maps `@btkulka/spotify-client/search` to its types, so Track Lab's `tsc` finds them. Bundlers (Vite, electron-vite) resolve both subpaths through `exports`.
+
+**Used by** Track Lab (candybar-manager): Find and buy's "Add a playlist" field and the Claude skills page's Source a playlist search playlists through its `spotify-search` IPC action (`search_spotify` over MCP).
 
 ## Replaces
 
@@ -158,4 +225,4 @@ Watch for:
 
 ## Develop
 
-`npm run build`, `npm run typecheck`, `npm test` (builds, then runs `dist/esm/**/*.test.js` on `node:test`; stubbed fetch, no network).
+`npm run build` (tsc for ESM and CJS, then `scripts/assets.mjs` copies `search.css` into `dist`), `npm run typecheck`, `npm test` (builds, then runs `dist/esm/**/*.test.js` on `node:test`; stubbed fetch, no network). The search box has no DOM test here (node:test has no DOM); it was checked in Chrome against the live API and in Track Lab.

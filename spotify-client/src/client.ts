@@ -9,6 +9,14 @@ import {
   type FetchLike,
 } from "./http.js";
 import { parseSpotifyId } from "./ids.js";
+import {
+  SPOTIFY_SEARCH_TYPES,
+  toItem,
+  type SpotifyItem,
+  type SpotifyItemSearchResult,
+  type SpotifySearchItemsOptions,
+  type SpotifySearchType,
+} from "./items.js";
 import type {
   SpotifyAlbumObject,
   SpotifyArtist,
@@ -77,6 +85,14 @@ export interface SpotifyClient {
   get<T = unknown>(path: string, query?: Record<string, QueryValue>): Promise<T>;
   /** GET /search, flattened. Defaults: tracks and artists, 20 each. */
   search(query: string, options?: { type?: ("track" | "artist")[]; limit?: number }): Promise<SpotifySearchResult>;
+  /**
+   * GET /search for any of the six kinds, each result flattened into a SpotifyItem.
+   * One page per kind asked for: `{ playlist: { items, total, offset, hasMore } }`.
+   * Defaults: every kind, 10 each. A blank query answers {} without a request.
+   */
+  searchItems(query: string, options?: SpotifySearchItemsOptions): Promise<SpotifyItemSearchResult>;
+  /** One track, album, artist, playlist, podcast or episode by ID, as a SpotifyItem; null when Spotify doesn't know it. */
+  getItem(type: SpotifySearchType, id: string, options?: { market?: string }): Promise<SpotifyItem | null>;
   /** GET /artists/{id}: the raw artist object (followers.total, popularity, name…). */
   getArtist(id: string): Promise<SpotifyArtistObject>;
   /** GET /albums in batches of 20. Unknown IDs are dropped, so the result can be shorter. */
@@ -216,6 +232,43 @@ export function createSpotifyClient(options: SpotifyClientOptions): SpotifyClien
     };
   }
 
+  async function searchItems(query: string, opts: SpotifySearchItemsOptions = {}): Promise<SpotifyItemSearchResult> {
+    const q = query.trim();
+    const types = (opts.types ?? SPOTIFY_SEARCH_TYPES).filter((t, i, all) => SPOTIFY_SEARCH_TYPES.includes(t) && all.indexOf(t) === i);
+    if (!q || types.length === 0) return {};
+    const limit = Math.min(50, Math.max(1, Math.floor(opts.limit ?? 10)));
+    const offset = Math.min(1000, Math.max(0, Math.floor(opts.offset ?? 0)));
+    const data = await get<Record<string, { items?: unknown[]; total?: number; next?: string | null } | undefined>>("/search", {
+      q,
+      type: types.join(","),
+      limit,
+      offset,
+      market: opts.market,
+    });
+    const out: SpotifyItemSearchResult = {};
+    for (const type of types) {
+      const page = data?.[`${type}s`];
+      // Spotify pads some pages (playlists especially) with nulls; they still count toward the total.
+      const items = (page?.items ?? []).filter(isPresent).map((raw) => toItem(type, raw as Record<string, unknown>));
+      const total = typeof page?.total === "number" ? page.total : items.length;
+      out[type] = { items, total, offset, hasMore: page?.next != null && offset + limit < Math.min(total, 1000) };
+    }
+    return out;
+  }
+
+  async function getItem(type: SpotifySearchType, id: string, opts: { market?: string } = {}): Promise<SpotifyItem | null> {
+    if (!SPOTIFY_SEARCH_TYPES.includes(type) || !/^[A-Za-z0-9]+$/.test(id)) return null;
+    // A playlist's full object carries its first 100 tracks; ask only for what an item shows.
+    const fields = type === "playlist" ? "id,name,uri,type,images,external_urls,owner(display_name,id),tracks(total)" : undefined;
+    try {
+      const raw = await get<Record<string, unknown> | null>(`/${type}s/${id}`, { market: opts.market, fields });
+      return raw && typeof raw.id === "string" ? toItem(type, raw) : null;
+    } catch (err) {
+      if (err instanceof SpotifyApiError && (err.status === 404 || err.status === 400)) return null;
+      throw err;
+    }
+  }
+
   async function getArtist(id: string): Promise<SpotifyArtistObject> {
     return get<SpotifyArtistObject>(`/artists/${encodeURIComponent(id)}`);
   }
@@ -303,6 +356,8 @@ export function createSpotifyClient(options: SpotifyClientOptions): SpotifyClien
     ),
     get,
     search,
+    searchItems,
+    getItem,
     getArtist,
     getAlbums,
     getPlaylistTracks,

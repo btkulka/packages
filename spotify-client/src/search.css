@@ -1,0 +1,266 @@
+/*
+ * @btkulka/spotify-client/search.css: the Spotify search box (mountSpotifySearch).
+ *
+ * Every colour and size is a --sps-* variable an app can set anywhere above the box
+ * (on :root to match its own tokens). Unset, they fall back to ui-kit's --ui-* tokens,
+ * then to a dark look of their own.
+ *
+ *   --sps-font          --sps-ink        --sps-accent       --sps-radius        --sps-thumb
+ *   --sps-field         --sps-ink-2      --sps-accent-ink   --sps-radius-panel  --sps-panel-max-height
+ *   --sps-bg (the list) --sps-ink-3      --sps-accent-soft  --sps-shadow
+ *   --sps-hover         --sps-line       --sps-danger
+ */
+
+.sps {
+  position: relative;
+  font-family: var(--sps-font, var(--ui-font, inherit));
+  color: var(--sps-ink, var(--ui-ink, #f2f4f7));
+  font-size: 14px;
+  line-height: 1.35;
+}
+.sps *,
+.sps *::before,
+.sps *::after { box-sizing: border-box; }
+.sps [hidden] { display: none !important; }
+
+/* ---- the field it draws (a passed-in field keeps the page's look) ---- */
+.sps-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  background: var(--sps-field, var(--ui-field, rgba(255, 255, 255, 0.04)));
+  border: 1px solid var(--sps-line, var(--ui-line, rgba(255, 255, 255, 0.14)));
+  border-radius: var(--sps-radius, var(--ui-r-field, 10px));
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sps-field:focus-within {
+  border-color: var(--sps-accent, var(--ui-accent, #1ed760));
+  box-shadow: 0 0 0 3px var(--sps-accent-soft, var(--ui-accent-soft, rgba(30, 215, 96, 0.16)));
+}
+.sps-field-icon { width: 18px; height: 18px; flex-shrink: 0; color: var(--sps-ink-3, var(--ui-ink-3, #7d8796)); }
+.sps-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.sps-input::placeholder { color: var(--sps-ink-3, var(--ui-placeholder, var(--ui-ink-3, #7d8796))); }
+.sps-input::-webkit-search-cancel-button { display: none; }
+.sps-clear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sps-ink-3, var(--ui-ink-3, #7d8796));
+  cursor: pointer;
+}
+.sps-clear:hover { color: var(--sps-ink, var(--ui-ink, #f2f4f7)); background: var(--sps-hover, var(--ui-surface-2, rgba(255, 255, 255, 0.06))); }
+.sps-clear-icon { width: 16px; height: 16px; }
+
+/* ---- kind chips ---- */
+.sps-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.sps--attached .sps-chips { margin-top: 0; margin-bottom: 4px; }
+.sps-chip {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--sps-line, var(--ui-line, rgba(255, 255, 255, 0.14)));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sps-ink-2, var(--ui-ink-2, #a7b0bd));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sps-chip:hover { color: var(--sps-ink, var(--ui-ink, #f2f4f7)); background: var(--sps-hover, var(--ui-surface-2, rgba(255, 255, 255, 0.06))); }
+.sps-chip[aria-checked="true"] {
+  background: var(--sps-accent, var(--ui-accent, #1ed760));
+  border-color: var(--sps-accent, var(--ui-accent, #1ed760));
+  color: var(--sps-accent-ink, var(--ui-accent-ink, #04130a));
+}
+.sps-chip:focus-visible,
+.sps-see-all:focus-visible,
+.sps-more:focus-visible,
+.sps-status-action:focus-visible {
+  outline: 2px solid var(--sps-accent, var(--ui-accent, #1ed760));
+  outline-offset: 2px;
+}
+
+/* ---- the list ---- */
+.sps-panel {
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  max-height: var(--sps-panel-max-height, 420px);
+  overflow: hidden;
+  background: var(--sps-bg, var(--ui-surface, #15171c));
+  border: 1px solid var(--sps-line, var(--ui-line, rgba(255, 255, 255, 0.14)));
+  border-radius: var(--sps-radius-panel, var(--ui-r-card, 14px));
+  box-shadow: var(--sps-shadow, var(--ui-shadow, 0 16px 40px rgba(0, 0, 0, 0.5)));
+}
+.sps--attached .sps-panel { top: 4px; }
+.sps--attached:has(.sps-chips:not([hidden])) .sps-panel { top: calc(100% + 4px); }
+.sps-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  transition: opacity 0.15s;
+}
+.sps-list:empty { display: none; }
+.sps.is-busy .sps-list { opacity: 0.55; }
+
+.sps-group + .sps-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--sps-line, var(--ui-line, rgba(255, 255, 255, 0.08))); }
+.sps-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 4px;
+}
+.sps-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sps-ink-3, var(--ui-ink-3, #7d8796));
+}
+.sps-see-all,
+.sps-more {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sps-accent, var(--ui-accent-text, var(--ui-accent, #1ed760)));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sps-see-all:hover,
+.sps-more:hover { text-decoration: underline; }
+.sps-more { display: block; width: 100%; margin-top: 2px; padding: 8px; text-align: center; }
+.sps-more:disabled { color: var(--sps-ink-3, var(--ui-ink-3, #7d8796)); text-decoration: none; cursor: default; }
+
+.sps-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sps-option.is-active { background: var(--sps-hover, var(--ui-surface-2, rgba(255, 255, 255, 0.07))); }
+.sps-thumb {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: var(--sps-thumb, 40px);
+  height: var(--sps-thumb, 40px);
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--sps-hover, var(--ui-surface-2, rgba(255, 255, 255, 0.07)));
+  color: var(--sps-ink-3, var(--ui-ink-3, #7d8796));
+}
+.sps-option--artist .sps-thumb { border-radius: 50%; }
+.sps-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sps-thumb-icon { width: 45%; height: 45%; }
+.sps-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sps-name,
+.sps-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sps-name { font-weight: 600; color: var(--sps-ink, var(--ui-ink, #f2f4f7)); }
+.sps-sub { font-size: 12.5px; color: var(--sps-ink-2, var(--ui-ink-2, #a7b0bd)); }
+.sps-explicit {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  vertical-align: 1px;
+  border-radius: 3px;
+  background: var(--sps-ink-3, var(--ui-ink-3, #7d8796));
+  color: var(--sps-bg, var(--ui-surface, #15171c));
+  font-size: 9px;
+  font-weight: 700;
+}
+.sps-meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sps-ink-3, var(--ui-ink-3, #7d8796));
+}
+
+/* ---- searching / nothing found / errors ---- */
+.sps-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 14px 14px;
+  font-size: 13px;
+  color: var(--sps-ink-2, var(--ui-ink-2, #a7b0bd));
+}
+.sps-status.is-error { color: var(--sps-danger, var(--ui-danger-text, #ff8f8f)); }
+.sps-status.is-busy .sps-status-text::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: sps-spin 0.7s linear infinite;
+}
+@keyframes sps-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .sps-status.is-busy .sps-status-text::before { animation: none; }
+}
+.sps-status-action {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--sps-line, var(--ui-line, rgba(255, 255, 255, 0.14)));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sps-ink, var(--ui-ink, #f2f4f7));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sps-status-action:hover { background: var(--sps-hover, var(--ui-surface-2, rgba(255, 255, 255, 0.06))); }
+
+.sps-credit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--sps-line, var(--ui-line, rgba(255, 255, 255, 0.08)));
+  font-size: 11px;
+  color: var(--sps-ink-3, var(--ui-ink-3, #7d8796));
+}
+.sps-list:empty + .sps-credit { display: none; }
+.sps-credit-logo { width: 14px; height: 14px; color: #1ed760; }

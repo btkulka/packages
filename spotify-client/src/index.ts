@@ -11,7 +11,17 @@ export {
   type SpotifyToken,
   type SpotifyTokenStore,
 } from "./client.js";
-export { parseSpotifyId, type SpotifyIdKind } from "./ids.js";
+export { parseSpotifyId, parseSpotifyLink, type SpotifyIdKind } from "./ids.js";
+export {
+  SPOTIFY_SEARCH_TYPES,
+  SPOTIFY_TYPE_LABELS,
+  toItem,
+  type SpotifyItem,
+  type SpotifyItemPage,
+  type SpotifyItemSearchResult,
+  type SpotifySearchItemsOptions,
+  type SpotifySearchType,
+} from "./items.js";
 export { SpotifyApiError, type FetchLike, type FetchLikeInit, type FetchLikeResponse } from "./http.js";
 export type {
   SpotifyAlbumObject,

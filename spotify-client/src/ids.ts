@@ -24,3 +24,21 @@ export function parseSpotifyId(input: string | null | undefined, kind: SpotifyId
   if (/^[A-Za-z0-9]{22}$/.test(s)) return s;
   return null;
 }
+
+/**
+ * Tells what a pasted Spotify link or URI points at, and its ID:
+ * `https://open.spotify.com/album/4m28…` → `{ type: "album", id: "4m28…" }`.
+ * Localized (`/intl-xx/`) and `/embed/` links count. A bare ID says nothing about
+ * its kind, so it gives null here (parseSpotifyId takes those when the kind is known).
+ */
+export function parseSpotifyLink(input: string | null | undefined): { type: SpotifyIdKind; id: string } | null {
+  if (!input) return null;
+  const s = String(input).trim();
+  const url = s.match(
+    /open\.spotify\.com\/(?:intl-[a-z]{2,3}(?:-[a-z]{2,4})?\/)?(?:embed\/)?(track|album|artist|playlist|show|episode)\/([A-Za-z0-9]+)/i,
+  );
+  if (url) return { type: url[1]!.toLowerCase() as SpotifyIdKind, id: url[2]! };
+  const uri = s.match(/^spotify:(track|album|artist|playlist|show|episode):([A-Za-z0-9]+)$/);
+  if (uri) return { type: uri[1] as SpotifyIdKind, id: uri[2]! };
+  return null;
+}

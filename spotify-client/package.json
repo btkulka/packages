@@ -1,7 +1,7 @@
 {
   "name": "@btkulka/spotify-client",
-  "version": "0.1.0",
-  "description": "Spotify Web API over the client-credentials flow: a cached token (memory, or a store the app hands in), 401 refresh and 429 Retry-After handling, and only the calls Ben's apps make: search, artist, albums in batches of 20, public playlist tracks, and Spotify URL/URI/ID parsing. Runs in Node and in the browser (global fetch, no node:* imports, no Buffer). No runtime dependencies.",
+  "version": "0.2.0",
+  "description": "Spotify Web API over the client-credentials flow: a cached token (memory, or a store the app hands in), 401 refresh and 429 Retry-After handling, and only the calls Ben's apps make: search (flattened per kind: tracks, albums, artists, playlists, podcasts, episodes), lookups by ID, artist, albums in batches of 20, public playlist tracks, and Spotify URL/URI/ID parsing. Also a framework-free search box (./search, ./search.css) that picks any of those kinds with filter chips, so nobody pastes links. Runs in Node and in the browser (global fetch, no node:* imports, no Buffer). No runtime dependencies.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/btkulka/packages.git",
@@ -58,8 +58,24 @@
       "types": "./dist/esm/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
+    },
+    "./search": {
+      "types": "./dist/esm/search.d.ts",
+      "import": "./dist/esm/search.js",
+      "require": "./dist/cjs/search.js"
+    },
+    "./search.css": "./dist/search.css"
+  },
+  "typesVersions": {
+    "*": {
+      "search": [
+        "./dist/esm/search.d.ts"
+      ]
     }
   },
+  "sideEffects": [
+    "*.css"
+  ],
   "files": [
     "dist",
     "!dist/**/*.test.*",
@@ -70,7 +86,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node ../scripts/cjs-marker.mjs && node scripts/assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test \"dist/esm/**/*.test.js\"",
     "prepublishOnly": "npm run build"
